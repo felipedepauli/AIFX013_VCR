@@ -1,0 +1,120 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.manifest
+*.spec
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Virtual environments
+.env/
+.venv/
+ENV/
+venv/
+
+# VS Code
+.vscode/
+
+# Data, logs, outputs
+*.log
+*.csv
+*.tsv
+*.dat
+*.db
+*.sqlite
+*.h5
+*.pth
+*.pt
+*.ckpt
+*.npy
+*.npz
+*.joblib
+*.pkl
+*.jsonl
+*.yaml
+*.yml
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Results, experiments, MLflow
+mlruns/
+runs/
+results/
+debug_viz/
+debug_viz_fix/
+revised_images/
+
+# CVAT, annotation, images
+cvat.sh
+iew/
+data/*/crops/
+data/*/manifests/
+data/*/raw/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test outputs
+*.coverage
+htmlcov/
+.tox/
+
+# Others
+*.ipynb
+*.mypy_cache/
+*.pytest_cache/
+
+# Ignore secrets
+secrets.*
+
+# Ignore scripts outputs
+scripts/*.log
+scripts/*.tmp
+
+# Ignore backup files
+*~
+*.bak
+
+# Ignore compiled files
+*.so
+*.dll
+*.exe
+*.o
+*.a
+*.out
+
+# Ignore package management
+pip-wheel-metadata/
+
+# Ignore core dumps
+core.*
+
+# Ignore lock files
+poetry.lock
+Pipfile.lock
+
+# Ignore documentation builds
+docs/_build/
+
+# Ignore test cache
+tests/__pycache__/
+tests/data/
+
+# Allow README and config files
+!README.md
+!config.yaml
+!hyperparameters.yaml
+!pyproject.toml

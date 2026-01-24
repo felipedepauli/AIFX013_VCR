@@ -1,0 +1,64 @@
+# Optuna Hyperparameter Search Configuration
+
+study:
+  name: "VCR-Optimization"
+  direction: "maximize"  # maximize val_acc
+  n_trials: 50
+  timeout: null  # seconds, null = unlimited
+  
+  # Optuna sampler configuration
+  sampler:
+    type: "TPE"  # Tree-structured Parzen Estimator
+    # Alternative: "Random", "Grid", "CmaEs"
+  
+  # Optuna pruner (early stopping for bad trials)
+  pruner:
+    type: "MedianPruner"
+    n_startup_trials: 5
+    n_warmup_steps: 10
+    # Alternative: "HyperbandPruner", "PercentilePruner", null (no pruning)
+
+# Hyperparameters to optimize
+# Format: name: {type, ...type-specific params}
+hyperparameters:
+  # Model architecture
+  backbone:
+    type: "categorical"
+    choices: ["resnet18", "resnet34", "resnet50", "efficientnet_b0"]
+  
+  fusion:
+    type: "categorical"
+    choices: ["msff", "simple_concat"]
+  
+  loss_fn:
+    type: "categorical"
+    choices: ["smooth_modulation", "focal"]
+  
+  # Optimizer
+  lr:
+    type: "float"
+    low: 1.0e-5
+    high: 1.0e-3
+    log: true  # search in log scale
+  
+  weight_decay:
+    type: "float"
+    low: 1.0e-6
+    high: 1.0e-3
+    log: true
+  
+  batch_size:
+    type: "categorical"
+    choices: [16, 32, 64]
+  
+  # Data augmentation
+  image_size:
+    type: "categorical"
+    choices: [224, 256, 288]
+
+# Fixed parameters (not optimized)
+fixed:
+  epochs: 30  # Shorter for optimization trials
+  use_weighted_sampler: true
+  device: "auto"
+  experiment_name: "VCR-Optimization"

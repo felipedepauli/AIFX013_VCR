@@ -1,0 +1,58 @@
+# VCR Pipeline Configuration
+
+# Paths
+paths:
+  raw_dir: "data/raw"
+  crops_dir: "data/crops"
+  manifests_dir: "data/manifests"
+  runs_dir: "runs"
+
+# Detection
+detector:
+  name: "yolo"  # "yolo" or "manual"
+  save_crops: true
+  yolo:
+    model: "yolo11x.pt"
+    conf_threshold: 0.5
+    classes: [2, 5, 7]  # car, bus, truck
+
+# Preprocessing
+preprocess:
+  split_ratios:
+    train: 0.7
+    val: 0.15
+    test: 0.15
+  group_by: "camera_id"  # null, "camera_id", or "track_id"
+  seed: 42
+
+# Model
+model:
+  backbone: "resnet50"  # "resnet50" or "efficientnet_b4"
+  fusion: "msff"        # "msff" or "simple_concat"
+  num_classes: 24
+  pretrained: true
+
+# Loss
+loss:
+  name: "smooth_modulation"  # "smooth_modulation" or "focal"
+  focal:
+    gamma: 2.0
+    alpha: null  # null = balanced
+  smooth_modulation:
+    tau: 1.0
+
+# Training
+training:
+  seed: 42
+  epochs: 50
+  batch_size: 32
+  lr: 0.001
+  weight_decay: 0.0001
+  input_size: 224
+  num_workers: 4
+  early_stopping_patience: 10
+
+# MLflow
+mlflow:
+  experiment_name: "vcr_experiments"
+  tracking_uri: "mlruns"
