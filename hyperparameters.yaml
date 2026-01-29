@@ -58,7 +58,7 @@ hyperparameters:
 
 # Fixed parameters (not optimized)
 fixed:
-  epochs: 30  # Shorter for optimization trials
+  epochs: 150  # Shorter for optimization trials
   use_weighted_sampler: true
   device: "auto"
   experiment_name: "VCR-Optimization"

@@ -67,10 +67,20 @@ class FocalLoss(BaseLoss):
 
         # Apply alpha if provided
         if alpha is not None:
-            if isinstance(alpha, (list, tuple)):
-                alpha = torch.tensor(alpha, device=logits.device, dtype=logits.dtype)
-            alpha_t = alpha[targets]
-            focal_weight = alpha_t * focal_weight
+            if isinstance(alpha, (float, int)):
+                # Scalar alpha
+                focal_weight = alpha * focal_weight
+            else:
+                # Class weights
+                if isinstance(alpha, (list, tuple)):
+                    alpha = torch.tensor(alpha, device=logits.device, dtype=logits.dtype)
+                
+                # Ensure alpha is on correct device if it came from config
+                if isinstance(alpha, torch.Tensor) and alpha.device != logits.device:
+                    alpha = alpha.to(logits.device)
+                    
+                alpha_t = alpha[targets]
+                focal_weight = alpha_t * focal_weight
 
         # Compute focal loss
         loss = focal_weight * ce_loss

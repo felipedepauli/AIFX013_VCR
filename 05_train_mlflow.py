@@ -16,6 +16,7 @@ import mlflow
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
+from tqdm import tqdm
 
 # Import modules to trigger registrations
 import src.backbones  # noqa: F401
@@ -27,6 +28,7 @@ from src.core.factories import StrategyFactory
 from src.data import ManifestDataset
 from src.data.transforms import build_transforms
 from src.utils.config import load_config
+from src.utils.callbacks import EarlyStopping
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,10 +112,30 @@ def train(
     criterion = strategy.configure_loss()
     
     epochs = int(config.get("train", {}).get("epochs", 50))
+    patience = int(config.get("train", {}).get("patience", 10)) # Default patience 10 epochs
+    
+    
+    early_stopping = EarlyStopping(patience=patience, verbose=True, mode="max")
+
+    # --- Resume Logic ---
+    start_epoch = 0
+    checkpoint_path = output_dir / "last.pt"
+    if checkpoint_path.exists():
+        logger.info(f"Resuming from checkpoint: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        if "optimizer_state_dict" in checkpoint:
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        if "scheduler_state_dict" in checkpoint and scheduler:
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        start_epoch = checkpoint["epoch"] + 1
+        best_val_acc = checkpoint.get("best_val_acc", 0.0)
+        logger.info(f"Resuming from epoch {start_epoch}")
 
     # --- MLFlow ---
     mlflow.set_experiment(experiment_name)
-    with mlflow.start_run(run_name=run_name):
+    # Allow nested runs so this can be called from optuna_runner
+    with mlflow.start_run(run_name=run_name, nested=True):
         mlflow.log_params(config.get("train", {}))
         mlflow.log_param("strategy", strategy_name)
         mlflow.log_dict({"class_counts": class_counts}, "class_counts.json")
@@ -121,14 +143,15 @@ def train(
         best_val_acc = 0.0
         best_epoch = 0
 
-        for epoch in range(epochs):
+        for epoch in range(start_epoch, epochs):
             # --- Training Loop ---
             model.train()
             total_loss = 0.0
             total_acc = 0.0
             num_batches = 0
             
-            for i, batch in enumerate(train_loader):
+            pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
+            for i, batch in enumerate(pbar):
                 optimizer.zero_grad()
                 
                 # Delegate step to strategy
@@ -140,9 +163,14 @@ def train(
                 metrics["loss"].backward()
                 optimizer.step()
                 
-                total_loss += metrics["loss"].item()
-                total_acc += metrics.get("accuracy", 0.0)
+                loss_val = metrics["loss"].item()
+                acc_val = metrics.get("accuracy", 0.0)
+                
+                total_loss += loss_val
+                total_acc += acc_val
                 num_batches += 1
+                
+                pbar.set_postfix({"loss": f"{loss_val:.4f}", "acc": f"{acc_val:.4f}"})
 
             train_loss = total_loss / num_batches
             train_acc = total_acc / num_batches
@@ -154,7 +182,8 @@ def train(
             num_val_batches = 0
             
             with torch.no_grad():
-                for batch in val_loader:
+                val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]", leave=False)
+                for batch in val_pbar:
                     metrics = strategy.validation_step(model, batch, criterion)
                     val_loss += metrics["loss"]
                     val_acc += metrics.get("accuracy", 0.0)
@@ -196,9 +225,29 @@ def train(
                 torch.save({
                     "epoch": epoch,
                     "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                     "val_acc": best_val_acc,
+                    "best_val_acc": best_val_acc,
                     "config": config
                 }, output_dir / "best.pt")
+            
+            # Save Last Checkpoint
+            torch.save({
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
+                "val_acc": val_acc,
+                "best_val_acc": best_val_acc,
+                "config": config
+            }, output_dir / "last.pt")
+            
+            # Early Stopping Check
+            early_stopping(val_acc, model)
+            if early_stopping.early_stop:
+                logger.info(f"Early stopping triggered at epoch {epoch+1}")
+                break
 
     return {"best_val_acc": best_val_acc, "best_epoch": best_epoch}
 

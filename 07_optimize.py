@@ -10,6 +10,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from typing import Any
 
 from src.optimization.optuna_runner import run_optimization
 from src.utils.config import load_config
@@ -21,7 +22,52 @@ from importlib.util import spec_from_file_location, module_from_spec
 spec = spec_from_file_location("train_module", Path(__file__).parent / "04_train_mlflow.py")
 train_module = module_from_spec(spec)
 spec.loader.exec_module(train_module)
-train = train_module.train
+train_fn = train_module.train
+
+def train_wrapper(**kwargs: Any) -> dict[str, Any]:
+    """Adapter to convert flat Optuna params into config dict for train()."""
+    manifest_path = kwargs.pop("manifest_path")
+    base_output_dir = kwargs.pop("output_dir")
+    trial = kwargs.pop("trial", None)
+    
+    # Ensure each trial has a unique output directory to prevent
+    # checkpoint collisions (e.g. trying to resume a resnet run with efficientnet)
+    if trial is not None:
+        output_dir = base_output_dir / f"trial_{trial.number}"
+    else:
+        output_dir = base_output_dir
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Whatever remains is treated as hyperparameters for the config
+    # We construct a synthetic config dict
+    config = {
+        "train": {
+            # Strategy params
+            "strategy": kwargs.get("strategy", "vcr"),
+            "backbone": kwargs.get("backbone", "resnet50"),
+            "fusion": kwargs.get("fusion", "msff"),
+            "loss": kwargs.get("loss_fn", "smooth_modulation"),
+            
+            # Training params
+            "epochs": kwargs.get("epochs", 30),
+            "batch_size": kwargs.get("batch_size", 32),
+            "image_size": kwargs.get("image_size", 224),
+            "lr": kwargs.get("lr", 1e-4),
+            "weight_decay": kwargs.get("weight_decay", 1e-4),
+            "device": kwargs.get("device", "auto"),
+            "use_weighted_sampler": kwargs.get("use_weighted_sampler", True),
+        }
+    }
+    
+    return train_fn(
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        config=config,
+        device=kwargs.get("device", "auto"),
+        experiment_name=kwargs.get("experiment_name", "VCR-Optimization"),
+        trial=trial,
+    )
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,7 +109,7 @@ def main() -> int:
     
     # Run optimization
     study = run_optimization(
-        train_fn=train,
+        train_fn=train_wrapper,
         hp_config=hp_config,
         fixed_params=fixed_params,
         study_config=study_config,

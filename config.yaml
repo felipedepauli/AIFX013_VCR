@@ -50,7 +50,7 @@ training:
   weight_decay: 0.0001
   input_size: 224
   num_workers: 4
-  early_stopping_patience: 10
+  early_stopping_patience: 15
 
 # MLflow
 mlflow:

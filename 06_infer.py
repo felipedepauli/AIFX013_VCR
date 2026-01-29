@@ -27,7 +27,7 @@ from torch.utils.data import DataLoader
 import src.backbones  # noqa: F401
 import src.fusion  # noqa: F401
 
-from src.data import ManifestDataset, get_val_transforms
+from src.data import ManifestDataset, build_transforms
 from src.utils.config import load_config
 
 # Import model
@@ -58,9 +58,13 @@ def load_model(checkpoint_path: Path, device: torch.device) -> tuple[VCRModel, d
     checkpoint = torch.load(checkpoint_path, map_location=device)
 
     config = checkpoint.get("config", {})
-    num_classes = config.get("num_classes", 10)
-    backbone = config.get("backbone", "resnet50")
-    fusion = config.get("fusion", "msff")
+    
+    # Handle nested config from optimization (config["train"])
+    train_config = config.get("train", config)
+    
+    num_classes = train_config.get("num_classes", 10)
+    backbone = train_config.get("backbone", "resnet50")
+    fusion = train_config.get("fusion", "msff")
 
     model = VCRModel(
         num_classes=num_classes,
@@ -282,7 +286,7 @@ def main() -> int:
         logger.info(f"Loaded {len(idx_to_class)} class names")
 
     # Transform
-    transform = get_val_transforms(args.image_size)
+    transform = build_transforms(config={}, is_train=False, image_size=args.image_size)
 
     # Run inference based on input mode
     if args.image:

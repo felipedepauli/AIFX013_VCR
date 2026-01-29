@@ -104,11 +104,14 @@ def run_inference(
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = checkpoint.get("config", {})
+    
+    # Handle nested config from optimization (config["train"])
+    train_config = config.get("train", config)
 
     model = VCRModel(
-        num_classes=config.get("num_classes", 10),
-        backbone_name=config.get("backbone", "resnet50"),
-        fusion_name=config.get("fusion", "msff"),
+        num_classes=train_config.get("num_classes", 10),
+        backbone_name=train_config.get("backbone", "resnet50"),
+        fusion_name=train_config.get("fusion", "msff"),
     )
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
@@ -386,10 +389,25 @@ def main() -> int:
 
     if Path(args.class_names).exists():
         idx_to_class, _ = load_class_info(Path(args.class_names))
+    elif args.manifest:
+        # Fallback: check maniifest directory
+        manifest_dir = Path(args.manifest).parent
+        candidate = manifest_dir / "class_to_idx.json"
+        if candidate.exists():
+            logger.info(f"Auto-detected class names at {candidate}")
+            idx_to_class, _ = load_class_info(candidate)
 
     if Path(args.class_counts).exists():
         with open(args.class_counts, "r") as f:
             class_counts = json.load(f)
+    elif args.manifest:
+         # Fallback: check maniifest directory
+        manifest_dir = Path(args.manifest).parent
+        candidate = manifest_dir / "class_counts.json"
+        if candidate.exists():
+            logger.info(f"Auto-detected class counts at {candidate}")
+            with open(candidate, "r") as f:
+                class_counts = json.load(f)
 
     # Compute metrics
     metrics = compute_metrics(y_true, y_pred, idx_to_class, class_counts)
