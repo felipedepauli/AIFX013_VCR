@@ -9,21 +9,28 @@ A modular Deep Learning pipeline for vehicle color classification, designed to h
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 
-# 2. Prepare Data (Experiment-Specific)
+# 2. Detect & Crop (Using Manual Annotations for Color)
+# Crucial: Use --detector manual to read existing 'vehicle_color' labels from JSONs.
+# YOLO only detects objects, not colors.
+python 01_detect_crop.py \
+  --detector manual \
+  --dataset bmc --version v2 \
+  --source-dir revised_images/train/
+
+# 3. Prepare Data (Experiment-Specific)
 # Creates a training manifest and saves config for reproducibility
-python 02_prepare_data.py --dataset prf_v1 --experiment exp_001
+python 02_prepare_data.py --dataset bmc_v2:v2 --experiment baseline_v2
 
-# 3. Train Model
+# 4. Train Model
 # Uses the manifest and config from the experiment folder
-python 04_train_mlflow.py --experiment runs/exp_001
+# Features: Early Stopping (patience=10), Auto-Resume (last.pt)
+python 04_train_mlflow.py --experiment runs/baseline_v2
 
-# 4. Evaluate
-# Detailed metrics (F1 per class, Head/Tail accuracy)
-python 06_eval.py --checkpoint runs/exp_001/train/best.pt \
-                  --manifest runs/exp_001/data/manifest.jsonl \
-                  --split test
+# 5. Optimize Hyperparameters (Optional)
+# searches for best LR, Backbone, etc. using Optuna
+python 05_optimize.py --experiment "Otimizacao_V1"
 
-# 5. View Results via MLFlow
+# 6. View Results via MLFlow
 mlflow ui
 ```
 
@@ -94,48 +101,34 @@ AIFX013-VCR/
 ## 🛠️ Step-by-Step Execution
 
 ### Step 1: Detection & Cropping
-Detect vehicles in raw images using YOLO or manual annotations.
+Detect vehicles in raw images. For color recognition, we require **manual annotations** or a specialized detector, as standard YOLO only detects object presence.
 
-**Option A: Import & Detect (Recommended)**
-Automatically imports images into the correct structure.
+**Option A: Import & Detect (Correct Workflow)**
+Imports images and their corresponding JSON labels (which contain color info).
 ```bash
 python 01_detect_crop.py \
-  --detector yolo \
-  --dataset prf --version v2 \
-  --source-dir /path/to/my/images
+  --detector manual \
+  --dataset bmc_v2 --version v2 \
+  --source-dir revised_images/train/
 ```
 
-**Option B: Existing Path (Legacy)**
-```bash
-python 01_detect_crop.py --detector yolo --raw-dir data/raw/new_images
-```
-
-### Step 2: Annotation (Optional)
-If labeled data is needed, upload crops to CVAT using `scripts/upload_to_cvat.py`.
-
-### Step 3: Model Architecture Verification (Optional)
-Verify the model architecture and parameter count before training.
-```bash
-python 03_model.py --backbone resnet50 --fusion msff --summary
-```
-*Useful to check if the model fits in memory and verify layer shapes.*
-
-### Step 4: Data Preparation
+### Step 2: Data Preparation
 Split data into Train/Val/Test and freeze the configuration (seed, transforms) for a specific experiment.
 ```bash
-python 02_prepare_data.py --dataset bmc:v2 --experiment baseline_v1
+python 02_prepare_data.py --dataset bmc_v2:v2 --experiment baseline_v2
 ```
 
-### Step 5: Training with MLFlow
-Train the model using the prepared experiment data. Configurable via `config.yaml`.
+### Step 3: Training with MLFlow
+Train the model using the prepared experiment data. Includes **Early Stopping** and **Auto-Resume**.
 ```bash
-python 04_train_mlflow.py --experiment runs/baseline_v1
+python 04_train_mlflow.py --experiment runs/baseline_v2
 ```
+*Tip: If the training is interrupted, run the same command again to resume from the last epoch.*
 
-### Step 6: Optimization (Optional)
+### Step 4: Optimization (Optional)
 Search for the best hyperparameters using Optuna.
 ```bash
-python 05_optimize.py --n-trials 50
+python 05_optimize.py --experiment "Otimizacao_V1"
 ```
 
 ### Step 7: Inference
