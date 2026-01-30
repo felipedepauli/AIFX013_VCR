@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""04_train_mlflow.py - Training script with MLflow logging.
+"""06_train_mlflow.py - Training script with MLflow logging.
 
 Usage:
-    python 04_train_mlflow.py --experiment runs/exp_001
+    python 06_train_mlflow.py --experiment runs/exp_001
 """
 
 import argparse
@@ -25,6 +25,7 @@ import src.losses  # noqa: F401
 import src.strategies.vcr  # noqa: F401 -> Registers VCRStrategy
 
 from src.core.factories import StrategyFactory
+from src.core.interfaces import PipelineStep
 from src.data import ManifestDataset
 from src.data.transforms import build_transforms
 from src.utils.config import load_config
@@ -59,9 +60,9 @@ def train(
     logger.info(f"Using device: {device}")
 
     # --- Data Loading ---
-    image_size = config.get("train", {}).get("image_size", 224)
-    batch_size = config.get("train", {}).get("batch_size", 32)
-    use_weighted_sampler = not config.get("train", {}).get("no_weighted_sampler", False)
+    image_size = config.get("training", {}).get("image_size", 224)
+    batch_size = config.get("training", {}).get("batch_size", 32)
+    use_weighted_sampler = not config.get("training", {}).get("no_weighted_sampler", False)
 
     # Build transforms from config
     transforms_cfg = preprocessing_config.get("transforms", {}) if preprocessing_config else {}
@@ -96,7 +97,7 @@ def train(
     )
 
     # --- Strategy Setup ---
-    strategy_name = config.get("train", {}).get("strategy", "vcr") # Default to VCR
+    strategy_name = config.get("training", {}).get("strategy", "vcr") # Default to VCR
     logger.info(f"Using strategy: {strategy_name}")
     
     # Register VCR manually just in case import didn't work (sanity check)
@@ -111,8 +112,8 @@ def train(
     optimizer, scheduler = strategy.configure_optimizers(model)
     criterion = strategy.configure_loss()
     
-    epochs = int(config.get("train", {}).get("epochs", 50))
-    patience = int(config.get("train", {}).get("patience", 10)) # Default patience 10 epochs
+    epochs = int(config.get("training", {}).get("epochs", 50))
+    patience = int(config.get("training", {}).get("patience", 10)) # Default patience 10 epochs
     
     
     early_stopping = EarlyStopping(patience=patience, verbose=True, mode="max")
@@ -136,7 +137,7 @@ def train(
     mlflow.set_experiment(experiment_name)
     # Allow nested runs so this can be called from optuna_runner
     with mlflow.start_run(run_name=run_name, nested=True):
-        mlflow.log_params(config.get("train", {}))
+        mlflow.log_params(config.get("training", {}))
         mlflow.log_param("strategy", strategy_name)
         mlflow.log_dict({"class_counts": class_counts}, "class_counts.json")
 
@@ -252,47 +253,104 @@ def train(
     return {"best_val_acc": best_val_acc, "best_epoch": best_epoch}
 
 
+class Step06TrainMlflow(PipelineStep):
+    """Pipeline step for model training with MLflow logging.
+
+    This step:
+    1. Loads experiment data (manifest, preprocessing config)
+    2. Trains the model using VCRStrategy
+    3. Logs metrics to MLflow
+    4. Saves checkpoints (best.pt, last.pt)
+    """
+
+    @property
+    def name(self) -> str:
+        return "06_train_mlflow"
+
+    @property
+    def description(self) -> str:
+        return "Train VCR model with MLflow experiment tracking."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.experiment_dir: Path | None = None
+        self.manifest_path: Path | None = None
+        self.device: str = "auto"
+        self.preprocessing_config: dict = {}
+
+    def validate(self) -> bool:
+        """Validate that experiment directory and manifest exist."""
+        if self.experiment_dir is None or not self.experiment_dir.exists():
+            logger.error(f"Experiment directory not found: {self.experiment_dir}")
+            return False
+        if self.manifest_path is None or not self.manifest_path.exists():
+            logger.error(f"Manifest not found: {self.manifest_path}")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute training.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        result = train(
+            manifest_path=self.manifest_path,
+            output_dir=self.experiment_dir / "train",
+            config=self.config,
+            device=self.device,
+            experiment_name=self.experiment_dir.name,
+            preprocessing_config=self.preprocessing_config,
+        )
+
+        logger.info(f"Training completed. Best val acc: {result['best_val_acc']:.4f} at epoch {result['best_epoch']}")
+        logger.info("Step06TrainMlflow completed successfully.")
+        return 0
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--experiment", type=str, required=True, help="Experiment directory (e.g. runs/exp_01)")
+    parser.add_argument("--experiment", type=str, required=True, help="Experiment name (e.g. first_experiment)")
     parser.add_argument("--manifest", type=str, help="Override manifest path")
     parser.add_argument("--config", type=str, default="config.yaml", help="Global config path")
     parser.add_argument("--device", type=str, default="auto")
     args = parser.parse_args()
 
-    # Load Experiment Config
-    exp_dir = Path(args.experiment)
-    # Try loading experiment-specific config first
-    exp_config_path = exp_dir / "data" / "config.yaml" # If we saved it there? Usually we use the global + overrides
-    # Actually, usually we rely on "config.yaml" at root.
-    
     cfg = load_config(args.config)
     
+    # Get runs_dir from config (default: "runs")
+    runs_dir = Path(cfg.get("paths", {}).get("runs_dir", "runs"))
+    
+    # Auto-prefix with runs_dir if not already a path
+    exp_name = args.experiment
+    if "/" not in exp_name:
+        exp_dir = runs_dir / exp_name
+    else:
+        exp_dir = Path(exp_name)
+
+    step = Step06TrainMlflow(config=cfg)
+    step.experiment_dir = exp_dir
+    step.device = args.device
+
     # Manifest resolution (priority: args > exp_dir > default)
     if args.manifest:
-        manifest_path = Path(args.manifest)
+        step.manifest_path = Path(args.manifest)
     else:
-        # Check exp_dir
-        manifest_path = exp_dir / "data" / "manifest.jsonl"
-        if not manifest_path.exists():
-            # Fallback
-            manifest_path = Path("data/manifests/manifest_ready.jsonl")
+        step.manifest_path = exp_dir / "data" / "manifest.jsonl"
+        if not step.manifest_path.exists():
+            step.manifest_path = Path("data/manifests/manifest_ready.jsonl")
 
     # Preprocessing Config
-    prep_config = {}
     prep_path = exp_dir / "data" / "preprocessing.yaml"
     if prep_path.exists():
         with open(prep_path) as f:
-            prep_config = yaml.safe_load(f)
+            step.preprocessing_config = yaml.safe_load(f)
 
-    train(
-        manifest_path=manifest_path,
-        output_dir=exp_dir / "train",
-        config=cfg,
-        device=args.device,
-        experiment_name=exp_dir.name,
-        preprocessing_config=prep_config
-    )
+    return step.run()
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

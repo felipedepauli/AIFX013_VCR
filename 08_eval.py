@@ -33,11 +33,12 @@ import src.backbones  # noqa: F401
 import src.fusion  # noqa: F401
 
 from src.data import ManifestDataset, build_transforms
+from src.core.interfaces import PipelineStep
 
 # Import model
 sys.path.insert(0, str(Path(__file__).parent))
 from importlib.util import spec_from_file_location, module_from_spec
-spec = spec_from_file_location("model", Path(__file__).parent / "03_model.py")
+spec = spec_from_file_location("model", Path(__file__).parent / "04_model.py")
 model_module = module_from_spec(spec)
 spec.loader.exec_module(model_module)
 VCRModel = model_module.VCRModel
@@ -162,7 +163,9 @@ def compute_metrics(
     macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
     weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
     macro_precision = precision_score(y_true, y_pred, average="macro", zero_division=0)
+    weighted_precision = precision_score(y_true, y_pred, average="weighted", zero_division=0)
     macro_recall = recall_score(y_true, y_pred, average="macro", zero_division=0)
+    weighted_recall = recall_score(y_true, y_pred, average="weighted", zero_division=0)
 
     # Per-class metrics - only use classes present in data
     unique_labels = sorted(set(y_true) | set(y_pred))
@@ -210,7 +213,9 @@ def compute_metrics(
         "macro_f1": macro_f1,
         "weighted_f1": weighted_f1,
         "macro_precision": macro_precision,
+        "weighted_precision": weighted_precision,
         "macro_recall": macro_recall,
+        "weighted_recall": weighted_recall,
         "per_class": report,
         "confusion_matrix": cm.tolist(),
         "head_tail": head_tail_metrics,
@@ -287,11 +292,11 @@ def print_summary(metrics: dict[str, Any], idx_to_class: dict[int, str]) -> None
 
     # Overall metrics
     print(f"\nOverall Metrics:")
-    print(f"  Accuracy:        {metrics['accuracy']:.4f}")
-    print(f"  Macro F1:        {metrics['macro_f1']:.4f}")
-    print(f"  Weighted F1:     {metrics['weighted_f1']:.4f}")
-    print(f"  Macro Precision: {metrics['macro_precision']:.4f}")
-    print(f"  Macro Recall:    {metrics['macro_recall']:.4f}")
+    print(f"  Accuracy:          {metrics['accuracy']:.4f}")
+    print(f"  Weighted F1:       {metrics['weighted_f1']:.4f}")
+    print(f"  Weighted Precision:{metrics['weighted_precision']:.4f}")
+    print(f"  Weighted Recall:   {metrics['weighted_recall']:.4f}")
+    print(f"  Macro F1:          {metrics['macro_f1']:.4f} (Avg of per-class F1)")
 
     # Per-class metrics
     per_class = metrics.get("per_class", {})
@@ -326,12 +331,133 @@ def print_summary(metrics: dict[str, Any], idx_to_class: dict[int, str]) -> None
     print("\n" + "-" * 60)
 
 
+
+class Step08Eval(PipelineStep):
+    """Pipeline step for model evaluation.
+
+    This step:
+    1. Loads predictions (from file or by running inference)
+    2. Computes metrics (Accuracy, F1, Precision, Recall)
+    3. Performs head/tail analysis for long-tailed datasets
+    4. Plots confusion matrix and per-class metrics
+    """
+
+    @property
+    def name(self) -> str:
+        return "08_eval"
+
+    @property
+    def description(self) -> str:
+        return "Evaluate model performance with long-tail metrics."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.predictions_path: Path | None = None
+        self.checkpoint_path: Path | None = None
+        self.manifest_path: Path | None = None
+        self.split: str = "test"
+        self.class_names_path: Path | None = None
+        self.class_counts_path: Path | None = None
+        self.output_dir: Path = Path("runs/eval")
+        self.device: str = "auto"
+
+    def validate(self) -> bool:
+        """Validate inputs."""
+        if not self.predictions_path and not (self.checkpoint_path and self.manifest_path):
+            logger.error("Must provide either predictions_path or (checkpoint_path and manifest_path)")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute evaluation.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        # Device
+        if self.device == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            device = torch.device(self.device)
+
+        # Get predictions
+        if self.predictions_path:
+            logger.info(f"Loading predictions from {self.predictions_path}")
+            y_true, y_pred = load_predictions(self.predictions_path)
+        else:
+            logger.info(f"Running inference with {self.checkpoint_path}")
+            y_true, y_pred = run_inference(
+                self.checkpoint_path,
+                self.manifest_path,
+                self.split,
+                device,
+            )
+
+        logger.info(f"Evaluating {len(y_true)} samples")
+
+        # Load class info
+        idx_to_class = {}
+        class_counts = {}
+
+        # 1. Try explicit paths
+        if self.class_names_path and self.class_names_path.exists():
+            idx_to_class, _ = load_class_info(self.class_names_path)
+        # 2. Try auto-detect from manifest dir
+        elif self.manifest_path:
+            manifest_dir = self.manifest_path.parent
+            candidate = manifest_dir / "class_to_idx.json"
+            if candidate.exists():
+                logger.info(f"Auto-detected class names at {candidate}")
+                idx_to_class, _ = load_class_info(candidate)
+
+        if self.class_counts_path and self.class_counts_path.exists():
+             with open(self.class_counts_path, "r") as f:
+                class_counts = json.load(f)
+        elif self.manifest_path:
+            manifest_dir = self.manifest_path.parent
+            candidate = manifest_dir / "class_counts.json"
+            if candidate.exists():
+                logger.info(f"Auto-detected class counts at {candidate}")
+                with open(candidate, "r") as f:
+                    class_counts = json.load(f)
+
+        # Compute metrics
+        metrics = compute_metrics(y_true, y_pred, idx_to_class, class_counts)
+
+        # Print summary
+        print_summary(metrics, idx_to_class)
+
+        # Save outputs
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        metrics_path = self.output_dir / "metrics.json"
+        with open(metrics_path, "w") as f:
+            json.dump(metrics, f, indent=2)
+        logger.info(f"Saved metrics to {metrics_path}")
+
+        # Plot confusion matrix
+        if idx_to_class:
+            cm = np.array(metrics["confusion_matrix"])
+            # Only use classes that appear in the confusion matrix
+            unique_labels = sorted(set(y_true) | set(y_pred))
+            class_names = [idx_to_class.get(i, f"class_{i}") for i in unique_labels]
+            plot_confusion_matrix(cm, class_names, self.output_dir / "confusion_matrix.png")
+            plot_per_class_metrics(metrics["per_class"], self.output_dir / "per_class_metrics.png")
+
+        logger.info(f"Evaluation complete. Results saved to {self.output_dir}")
+        logger.info("Step08Eval completed successfully.")
+        return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate VCR model")
-
+    
     # Input options
     parser.add_argument("--predictions", type=str,
-                        help="Path to predictions.jsonl (from 05_infer.py)")
+                        help="Path to predictions.jsonl (from 07_infer.py)")
     parser.add_argument("--checkpoint", type=str,
                         help="Path to model checkpoint (runs inference)")
     parser.add_argument("--manifest", type=str,
@@ -359,84 +485,19 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    # Device
-    if args.device == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(args.device)
+    step = Step08Eval(config={})
+    step.predictions_path = Path(args.predictions) if args.predictions else None
+    step.checkpoint_path = Path(args.checkpoint) if args.checkpoint else None
+    step.manifest_path = Path(args.manifest) if args.manifest else None
+    step.split = args.split
+    step.class_names_path = Path(args.class_names)
+    step.class_counts_path = Path(args.class_counts)
+    step.output_dir = Path(args.output_dir)
+    step.device = args.device
 
-    # Get predictions
-    if args.predictions:
-        logger.info(f"Loading predictions from {args.predictions}")
-        y_true, y_pred = load_predictions(Path(args.predictions))
-    elif args.checkpoint and args.manifest:
-        logger.info(f"Running inference with {args.checkpoint}")
-        y_true, y_pred = run_inference(
-            Path(args.checkpoint),
-            Path(args.manifest),
-            args.split,
-            device,
-        )
-    else:
-        logger.error("Must provide either --predictions or (--checkpoint and --manifest)")
-        return 1
-
-    logger.info(f"Evaluating {len(y_true)} samples")
-
-    # Load class info
-    idx_to_class = {}
-    class_counts = {}
-
-    if Path(args.class_names).exists():
-        idx_to_class, _ = load_class_info(Path(args.class_names))
-    elif args.manifest:
-        # Fallback: check maniifest directory
-        manifest_dir = Path(args.manifest).parent
-        candidate = manifest_dir / "class_to_idx.json"
-        if candidate.exists():
-            logger.info(f"Auto-detected class names at {candidate}")
-            idx_to_class, _ = load_class_info(candidate)
-
-    if Path(args.class_counts).exists():
-        with open(args.class_counts, "r") as f:
-            class_counts = json.load(f)
-    elif args.manifest:
-         # Fallback: check maniifest directory
-        manifest_dir = Path(args.manifest).parent
-        candidate = manifest_dir / "class_counts.json"
-        if candidate.exists():
-            logger.info(f"Auto-detected class counts at {candidate}")
-            with open(candidate, "r") as f:
-                class_counts = json.load(f)
-
-    # Compute metrics
-    metrics = compute_metrics(y_true, y_pred, idx_to_class, class_counts)
-
-    # Print summary
-    print_summary(metrics, idx_to_class)
-
-    # Save outputs
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save metrics JSON
-    metrics_path = output_dir / "metrics.json"
-    with open(metrics_path, "w") as f:
-        json.dump(metrics, f, indent=2)
-    logger.info(f"Saved metrics to {metrics_path}")
-
-    # Plot confusion matrix
-    if idx_to_class:
-        cm = np.array(metrics["confusion_matrix"])
-        # Only use classes that appear in the confusion matrix
-        unique_labels = sorted(set(y_true) | set(y_pred))
-        class_names = [idx_to_class.get(i, f"class_{i}") for i in unique_labels]
-        plot_confusion_matrix(cm, class_names, output_dir / "confusion_matrix.png")
-        plot_per_class_metrics(metrics["per_class"], output_dir / "per_class_metrics.png")
-
-    logger.info(f"Evaluation complete. Results saved to {output_dir}")
-    return 0
+    return step.run()
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

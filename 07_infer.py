@@ -29,11 +29,12 @@ import src.fusion  # noqa: F401
 
 from src.data import ManifestDataset, build_transforms
 from src.utils.config import load_config
+from src.core.interfaces import PipelineStep
 
 # Import model
 sys.path.insert(0, str(Path(__file__).parent))
 from importlib.util import spec_from_file_location, module_from_spec
-spec = spec_from_file_location("model", Path(__file__).parent / "03_model.py")
+spec = spec_from_file_location("model", Path(__file__).parent / "04_model.py")
 model_module = module_from_spec(spec)
 spec.loader.exec_module(model_module)
 VCRModel = model_module.VCRModel
@@ -238,82 +239,128 @@ def save_predictions(predictions: list[dict], output_path: Path) -> None:
     logger.info(f"Saved {len(predictions)} predictions to {output_path}")
 
 
+class Step07Infer(PipelineStep):
+    """Pipeline step for model inference.
+
+    This step:
+    1. Loads a trained model from checkpoint
+    2. Runs inference on images (single, directory, or manifest)
+    3. Saves predictions to JSONL
+    """
+
+    @property
+    def name(self) -> str:
+        return "07_infer"
+
+    @property
+    def description(self) -> str:
+        return "Run inference with trained VCR model."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.checkpoint_path: Path | None = None
+        self.class_names_path: Path | None = None
+        self.image_path: Path | None = None
+        self.image_dir: Path | None = None
+        self.manifest_path: Path | None = None
+        self.split: str | None = None
+        self.output_path: Path = Path("predictions.jsonl")
+        self.batch_size: int = 32
+        self.image_size: int = 224
+        self.device: str = "auto"
+
+    def validate(self) -> bool:
+        """Validate that checkpoint exists."""
+        if self.checkpoint_path is None or not self.checkpoint_path.exists():
+            logger.error(f"Checkpoint not found: {self.checkpoint_path}")
+            return False
+        if self.image_path is None and self.image_dir is None and self.manifest_path is None:
+            logger.error("Must specify --image, --image-dir, or --manifest")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute inference.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        # Device
+        if self.device == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            device = torch.device(self.device)
+        logger.info(f"Using device: {device}")
+
+        # Load model
+        model, model_config = load_model(self.checkpoint_path, device)
+
+        # Load class names
+        idx_to_class = None
+        if self.class_names_path and self.class_names_path.exists():
+            idx_to_class = load_class_names(self.class_names_path)
+            logger.info(f"Loaded {len(idx_to_class)} class names")
+
+        # Transform
+        transform = build_transforms(config={}, is_train=False, image_size=self.image_size)
+
+        # Run inference
+        if self.image_path:
+            result = predict_single(model, self.image_path, transform, device, idx_to_class)
+            print(json.dumps(result, indent=2))
+        elif self.image_dir:
+            predictions = predict_directory(model, self.image_dir, transform, device, idx_to_class)
+            save_predictions(predictions, self.output_path)
+        elif self.manifest_path:
+            dataset = ManifestDataset(str(self.manifest_path), split=self.split, transform=transform)
+            loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False, num_workers=4)
+            logger.info(f"Loaded {len(dataset)} samples from manifest")
+            predictions = predict_batch(model, loader, device, idx_to_class)
+            save_predictions(predictions, self.output_path)
+
+        logger.info("Step07Infer completed successfully.")
+        return 0
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run inference with VCR model")
-
     parser.add_argument("--checkpoint", type=str, required=True,
                         help="Path to model checkpoint (.pt)")
     parser.add_argument("--class-names", type=str, default="data/processed/class_to_idx.json",
                         help="Path to class_to_idx.json")
-
-    # Input modes (mutually exclusive)
     input_group = parser.add_mutually_exclusive_group(required=True)
     input_group.add_argument("--image", type=str, help="Single image path")
     input_group.add_argument("--image-dir", type=str, help="Directory with images")
     input_group.add_argument("--manifest", type=str, help="Manifest file for batch inference")
-
     parser.add_argument("--split", type=str, default=None,
                         help="Filter manifest by split (train/val/test)")
     parser.add_argument("--output", type=str, default="predictions.jsonl",
                         help="Output file for predictions")
-    parser.add_argument("--batch-size", type=int, default=32,
-                        help="Batch size for manifest inference")
-    parser.add_argument("--image-size", type=int, default=224,
-                        help="Input image size")
-    parser.add_argument("--device", type=str, default="auto",
-                        choices=["auto", "cuda", "cpu"])
-
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--image-size", type=int, default=224)
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"])
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
 
-    # Device
-    if args.device == "auto":
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device(args.device)
-    logger.info(f"Using device: {device}")
+    step = Step07Infer(config={})
+    step.checkpoint_path = Path(args.checkpoint)
+    step.class_names_path = Path(args.class_names)
+    step.image_path = Path(args.image) if args.image else None
+    step.image_dir = Path(args.image_dir) if args.image_dir else None
+    step.manifest_path = Path(args.manifest) if args.manifest else None
+    step.split = args.split
+    step.output_path = Path(args.output)
+    step.batch_size = args.batch_size
+    step.image_size = args.image_size
+    step.device = args.device
 
-    # Load model
-    model, config = load_model(Path(args.checkpoint), device)
-
-    # Load class names
-    idx_to_class = None
-    if Path(args.class_names).exists():
-        idx_to_class = load_class_names(Path(args.class_names))
-        logger.info(f"Loaded {len(idx_to_class)} class names")
-
-    # Transform
-    transform = build_transforms(config={}, is_train=False, image_size=args.image_size)
-
-    # Run inference based on input mode
-    if args.image:
-        # Single image
-        result = predict_single(model, Path(args.image), transform, device, idx_to_class)
-        print(json.dumps(result, indent=2))
-        return 0
-
-    elif args.image_dir:
-        # Directory of images
-        predictions = predict_directory(model, Path(args.image_dir), transform, device, idx_to_class)
-        save_predictions(predictions, Path(args.output))
-
-    elif args.manifest:
-        # Manifest batch
-        dataset = ManifestDataset(
-            args.manifest,
-            split=args.split,
-            transform=transform,
-        )
-        loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
-        logger.info(f"Loaded {len(dataset)} samples from manifest")
-
-        predictions = predict_batch(model, loader, device, idx_to_class)
-        save_predictions(predictions, Path(args.output))
-
-    return 0
+    return step.run()
 
 
 if __name__ == "__main__":

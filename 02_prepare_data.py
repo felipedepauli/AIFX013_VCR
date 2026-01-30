@@ -22,6 +22,8 @@ from collections import Counter
 
 from sklearn.model_selection import GroupShuffleSplit
 
+from src.core.interfaces import PipelineStep
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -142,129 +144,154 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-    
-    # Paths
-    project_root = Path(__file__).parent
-    data_root = project_root / "data"
-    
-    # Handle dataset:version -> dataset_version
-    dataset_name = args.dataset.replace(":", "_")
-    
-    dataset_dir = data_root / dataset_name
-    runs_dir = project_root / "runs"
-    exp_dir = runs_dir / args.experiment
-    exp_data_dir = exp_dir / "data"
+class Step02PrepareData(PipelineStep):
+    """Pipeline step for preparing dataset for an experiment.
 
-    if not dataset_dir.exists():
-        logger.error(f"Dataset not found: {dataset_dir}")
-        return 1
+    This step:
+    1. Loads manifest from dataset directory
+    2. Applies train/val/test splits
+    3. Encodes labels
+    4. Saves experiment data to runs/{experiment}/data/
+    """
 
-    # Load Manifest
-    # Prefer generated manifest if exists, else look for raw
-    manifest_path = dataset_dir / "manifests" / "manifest_raw_labeled.jsonl"
-    if not manifest_path.exists():
-        manifest_path = dataset_dir / "manifests" / "manifest_labeled.jsonl"
-    
-    # Fallback to manifest_raw.jsonl (if using import without explicit labeling step yet)
-    if not manifest_path.exists():
-        manifest_path = dataset_dir / "manifests" / "manifest_raw.jsonl"
-    
-    if not manifest_path.exists():
-        logger.error(f"Manifest not found in {dataset_dir}/manifests/")
-        return 1
+    @property
+    def name(self) -> str:
+        return "02_prepare_data"
 
-    logger.info(f"Loading manifest from {manifest_path}...")
-    records = load_jsonl(manifest_path)
-    logger.info(f"Loaded {len(records)} records.")
+    @property
+    def description(self) -> str:
+        return "Prepare dataset: load, split, and encode labels for an experiment."
 
-    # Load Config (Global + Experiment specific if any)
-    config_path = project_root / args.config
-    config = load_yaml(config_path)
-    
-    # Preprocessing settings
-    preprocess_cfg = config.get("preprocess", {})
-    split_ratios = preprocess_cfg.get("split_ratios", {"train": 0.7, "val": 0.15, "test": 0.15})
-    group_by = preprocess_cfg.get("group_by", "camera_id")
-    seed = args.seed
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.dataset_name: str = ""
+        self.experiment_name: str = ""
+        self.seed: int = 42
+        self.project_root: Path = Path(__file__).parent
 
-    # Apply Split
-    logger.info(f"Splitting data (Seed: {seed}, GroupBy: {group_by})...")
-    records = split_data(
-        records,
-        train_ratio=split_ratios["train"],
-        val_ratio=split_ratios["val"],
-        test_ratio=split_ratios["test"],
-        group_by=group_by,
-        seed=seed
-    )
+    def validate(self) -> bool:
+        """Validate that dataset exists."""
+        if not self.dataset_name:
+            logger.error("Dataset name is required.")
+            return False
+        dataset_dir = self.project_root / "data" / self.dataset_name.replace(":", "_")
+        if not dataset_dir.exists():
+            logger.error(f"Dataset not found: {dataset_dir}")
+            return False
+        return True
 
-    split_counts = Counter(r["split"] for r in records)
-    logger.info(f"Split distribution: {dict(split_counts)}")
+    def run(self) -> int:
+        """Execute data preparation.
 
-    # Build and Encode Labels
-    logger.info("Encoding labels...")
-    class_to_idx = build_class_mapping(records)
-    class_counts = dict(Counter(r["label"] for r in records if r.get("label")))
-    
-    logger.info(f"Classes ({len(class_to_idx)}): {list(class_to_idx.keys())}")
-    
-    for record in records:
-        if "label" in record:
-            record["label_idx"] = class_to_idx[record["label"]]
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
 
-    # Prepare Transforms Config (To be saved)
-    transforms_config = {
-        "source_dataset": args.dataset,
-        "seed": seed,
-        "split_ratios": split_ratios,
-        "group_by": group_by,
-        "transforms": preprocess_cfg.get("transforms", {})  # brightness, etc.
-    }
+        data_root = self.project_root / "data"
+        dataset_name = self.dataset_name.replace(":", "_")
+        dataset_dir = data_root / dataset_name
+        runs_dir = self.project_root / "runs"
+        exp_dir = runs_dir / self.experiment_name
+        exp_data_dir = exp_dir / "data"
 
-    # Output
-    logger.info(f"Saving experiment data to {exp_data_dir}...")
-    exp_data_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Save manifest
-    output_manifest = exp_data_dir / "manifest.jsonl"
-    save_jsonl(records, output_manifest)
-    
-    # Save preprocessing config
-    with open(exp_data_dir / "preprocessing.yaml", "w") as f:
-        yaml.dump(transforms_config, f)
+        # Load Manifest
+        manifest_path = dataset_dir / "manifests" / "manifest_raw_labeled.jsonl"
+        if not manifest_path.exists():
+            manifest_path = dataset_dir / "manifests" / "manifest_labeled.jsonl"
+        if not manifest_path.exists():
+            manifest_path = dataset_dir / "manifests" / "manifest_raw.jsonl"
+        if not manifest_path.exists():
+            logger.error(f"Manifest not found in {dataset_dir}/manifests/")
+            return 1
 
-    # Save class metadata
-    with open(exp_data_dir / "class_to_idx.json", "w") as f:
-        json.dump(class_to_idx, f, indent=2)
-    with open(exp_data_dir / "class_counts.json", "w") as f:
-        json.dump(class_counts, f, indent=2)
-        
-    # Symlink or Copy logic could go here if we were copying images
-    # For now, we just rely on paths in manifest being absolute or relative to project root
-    # Note: Manifest paths in 'image_path' are usually relative.
-    # We should ensure they remain valid. 
-    # Current manifest paths: likely "data/crops/..." or "data/raw/..."
-    # With the move, they are now "data/prf_v1/crops/..."
-    # We might need to fix paths in the manifest if they were hardcoded relative to root.
-    
-    # Let's check a record path and fix it if necessary
-    sample_path = str(records[0].get("crop_path", ""))
-    if sample_path.startswith("data/crops/"):
-        # Fix paths to new location
-        logger.info("Updating paths in manifest to new structure...")
-        for r in records:
-            if "crop_path" in r:
-                r["crop_path"] = r["crop_path"].replace("data/crops/", f"data/{args.dataset}/crops/")
-            if "image_path" in r:
-                r["image_path"] = r["image_path"].replace("data/raw/", f"data/{args.dataset}/raw/")
-        
-        # Save again with updated paths
+        logger.info(f"Loading manifest from {manifest_path}...")
+        records = load_jsonl(manifest_path)
+        logger.info(f"Loaded {len(records)} records.")
+
+        # Load Config
+        config_path = self.project_root / self.config.get("config_file", "config.yaml")
+        config = load_yaml(config_path)
+
+        # Preprocessing settings
+        preprocess_cfg = config.get("preprocess", {})
+        split_ratios = preprocess_cfg.get("split_ratios", {"train": 0.7, "val": 0.15, "test": 0.15})
+        group_by = preprocess_cfg.get("group_by", "camera_id")
+
+        # Apply Split
+        logger.info(f"Splitting data (Seed: {self.seed}, GroupBy: {group_by})...")
+        records = split_data(
+            records,
+            train_ratio=split_ratios["train"],
+            val_ratio=split_ratios["val"],
+            test_ratio=split_ratios["test"],
+            group_by=group_by,
+            seed=self.seed
+        )
+
+        split_counts = Counter(r["split"] for r in records)
+        logger.info(f"Split distribution: {dict(split_counts)}")
+
+        # Build and Encode Labels
+        logger.info("Encoding labels...")
+        class_to_idx = build_class_mapping(records)
+        class_counts = dict(Counter(r["label"] for r in records if r.get("label")))
+
+        logger.info(f"Classes ({len(class_to_idx)}): {list(class_to_idx.keys())}")
+
+        for record in records:
+            if "label" in record:
+                record["label_idx"] = class_to_idx[record["label"]]
+
+        # Prepare Transforms Config
+        transforms_config = {
+            "source_dataset": self.dataset_name,
+            "seed": self.seed,
+            "split_ratios": split_ratios,
+            "group_by": group_by,
+            "transforms": preprocess_cfg.get("transforms", {})
+        }
+
+        # Output
+        logger.info(f"Saving experiment data to {exp_data_dir}...")
+        exp_data_dir.mkdir(parents=True, exist_ok=True)
+
+        output_manifest = exp_data_dir / "manifest.jsonl"
         save_jsonl(records, output_manifest)
 
-    logger.info("Done!")
-    return 0
+        with open(exp_data_dir / "preprocessing.yaml", "w") as f:
+            yaml.dump(transforms_config, f)
+
+        with open(exp_data_dir / "class_to_idx.json", "w") as f:
+            json.dump(class_to_idx, f, indent=2)
+        with open(exp_data_dir / "class_counts.json", "w") as f:
+            json.dump(class_counts, f, indent=2)
+
+        # Fix paths if needed
+        sample_path = str(records[0].get("crop_path", ""))
+        if sample_path.startswith("data/crops/"):
+            logger.info("Updating paths in manifest to new structure...")
+            for r in records:
+                if "crop_path" in r:
+                    r["crop_path"] = r["crop_path"].replace("data/crops/", f"data/{self.dataset_name}/crops/")
+                if "image_path" in r:
+                    r["image_path"] = r["image_path"].replace("data/raw/", f"data/{self.dataset_name}/raw/")
+            save_jsonl(records, output_manifest)
+
+        logger.info("Step02PrepareData completed successfully.")
+        return 0
+
+
+def main():
+    args = parse_args()
+
+    step = Step02PrepareData(config={"config_file": args.config})
+    step.dataset_name = args.dataset
+    step.experiment_name = args.experiment
+    step.seed = args.seed
+
+    return step.run()
 
 
 if __name__ == "__main__":

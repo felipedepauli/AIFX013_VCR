@@ -9,12 +9,12 @@ paths:
 
 # Detection
 detector:
-  name: "yolo"  # "yolo" or "manual"
+  name: "yolo" # "yolo" or "manual"
   save_crops: true
   yolo:
     model: "yolo11x.pt"
     conf_threshold: 0.5
-    classes: [2, 5, 7]  # car, bus, truck
+    classes: [2, 5, 7] # car, bus, truck
 
 # Preprocessing
 preprocess:
@@ -22,29 +22,29 @@ preprocess:
     train: 0.7
     val: 0.15
     test: 0.15
-  group_by: "camera_id"  # null, "camera_id", or "track_id"
+  group_by: "camera_id" # null, "camera_id", or "track_id"
   seed: 42
 
 # Model
 model:
-  backbone: "resnet50"  # "resnet50" or "efficientnet_b4"
-  fusion: "msff"        # "msff" or "simple_concat"
+  backbone: "resnet50" # "resnet50" or "efficientnet_b4"
+  fusion: "msff" # "msff" or "simple_concat"
   num_classes: 24
   pretrained: true
 
 # Loss
 loss:
-  name: "smooth_modulation"  # "smooth_modulation" or "focal"
+  name: "smooth_modulation" # "smooth_modulation" or "focal"
   focal:
     gamma: 2.0
-    alpha: null  # null = balanced
+    alpha: null # null = balanced
   smooth_modulation:
     tau: 1.0
 
 # Training
 training:
   seed: 42
-  epochs: 50
+  epochs: 2
   batch_size: 32
   lr: 0.001
   weight_decay: 0.0001

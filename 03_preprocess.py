@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""02_preprocess.py - Validate and prepare dataset for training.
+"""03_preprocess.py - Validate and prepare dataset for training.
 
 This script:
 1. Validates manifest entries (checks images exist, labels present)
@@ -22,6 +22,7 @@ from typing import Any
 
 from sklearn.model_selection import GroupShuffleSplit
 
+from src.core.interfaces import PipelineStep
 from src.utils.config import load_config
 from src.utils.manifest_io import read_manifest, write_manifest
 
@@ -255,6 +256,125 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class Step03Preprocess(PipelineStep):
+    """Pipeline step for preprocessing: validate, encode labels, split data.
+
+    This step:
+    1. Validates manifest entries (images exist, labels present)
+    2. Encodes string labels to indices
+    3. Splits data using GroupShuffleSplit
+    4. Outputs manifest_ready.jsonl with split assignments
+    """
+
+    @property
+    def name(self) -> str:
+        return "03_preprocess"
+
+    @property
+    def description(self) -> str:
+        return "Validate manifest, encode labels, and split data."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.manifest_path: Path | None = None
+        self.output_manifest: Path = Path("data/manifests/manifest_ready.jsonl")
+        self.output_dir: Path = Path("data/processed")
+        self.group_by: str | None = "camera_id"
+        self.seed: int = 42
+        self.skip_image_check: bool = False
+
+    def validate(self) -> bool:
+        """Validate that manifest exists."""
+        if self.manifest_path is None or not self.manifest_path.exists():
+            logger.error(f"Manifest not found: {self.manifest_path}")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute preprocessing.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        logger.info(f"Loading manifest: {self.manifest_path}")
+        records = read_manifest(self.manifest_path)
+        logger.info(f"Loaded {len(records)} records")
+
+        # Validate
+        logger.info("Validating records...")
+        valid_records, errors = validate_records(
+            records,
+            require_label=True,
+            check_images=not self.skip_image_check,
+        )
+
+        if errors:
+            logger.warning(f"Validation errors ({len(errors)}):")
+            for err in errors[:10]:
+                logger.warning(f"  {err}")
+            if len(errors) > 10:
+                logger.warning(f"  ... and {len(errors) - 10} more")
+
+        logger.info(f"Valid records: {len(valid_records)}/{len(records)}")
+
+        if not valid_records:
+            logger.error("No valid records. Exiting.")
+            return 1
+
+        # Build class mapping
+        class_to_idx = build_class_mapping(valid_records)
+        class_counts = get_class_counts(valid_records)
+
+        logger.info(f"Classes ({len(class_to_idx)}): {list(class_to_idx.keys())}")
+        logger.info(f"Class counts: {class_counts}")
+
+        # Split data
+        preprocess_cfg = self.config.get("preprocess", {})
+        split_ratios = preprocess_cfg.get("split_ratios", {})
+        train_ratio = split_ratios.get("train", 0.7)
+        val_ratio = split_ratios.get("val", 0.15)
+        test_ratio = split_ratios.get("test", 0.15)
+
+        group_by = self.group_by
+        if group_by == "null" or group_by == "none":
+            group_by = None
+
+        logger.info(f"Splitting data (train={train_ratio}, val={val_ratio}, test={test_ratio})")
+        logger.info(f"Group by: {group_by}, Seed: {self.seed}")
+
+        valid_records = split_data(
+            valid_records,
+            train_ratio=train_ratio,
+            val_ratio=val_ratio,
+            test_ratio=test_ratio,
+            group_by=group_by,
+            seed=self.seed,
+        )
+
+        # Count splits
+        split_counts = Counter(r["split"] for r in valid_records)
+        logger.info(f"Split distribution: {dict(split_counts)}")
+
+        # Add label_idx to records
+        for record in valid_records:
+            record["label_idx"] = class_to_idx[record["label"]]
+
+        # Save outputs
+        save_json(class_to_idx, self.output_dir / "class_to_idx.json")
+        save_json(class_counts, self.output_dir / "class_counts.json")
+        write_manifest(valid_records, self.output_manifest)
+
+        logger.info(f"Saved class_to_idx.json to {self.output_dir / 'class_to_idx.json'}")
+        logger.info(f"Saved class_counts.json to {self.output_dir / 'class_counts.json'}")
+        logger.info(f"Saved manifest_ready.jsonl to {self.output_manifest}")
+        logger.info("Step03Preprocess completed successfully.")
+
+        return 0
+
+
 def main() -> int:
     args = parse_args()
 
@@ -265,99 +385,24 @@ def main() -> int:
         logger.warning(f"Config not found: {args.config}. Using defaults.")
         cfg = {}
 
+    step = Step03Preprocess(config=cfg)
+
     # Determine input manifest
     if args.manifest:
-        manifest_path = Path(args.manifest)
+        step.manifest_path = Path(args.manifest)
     else:
         manifests_dir = cfg.get("paths", {}).get("manifests_dir", "data/manifests")
-        # Try labeled first, then raw
-        manifest_path = Path(manifests_dir) / "manifest_raw_labeled.jsonl"
-        if not manifest_path.exists():
-            manifest_path = Path(manifests_dir) / "manifest_raw.jsonl"
+        step.manifest_path = Path(manifests_dir) / "manifest_raw_labeled.jsonl"
+        if not step.manifest_path.exists():
+            step.manifest_path = Path(manifests_dir) / "manifest_raw.jsonl"
 
-    if not manifest_path.exists():
-        logger.error(f"Manifest not found: {manifest_path}")
-        return 1
+    step.output_manifest = Path(args.output_manifest)
+    step.output_dir = Path(args.output_dir)
+    step.group_by = args.group_by
+    step.seed = args.seed
+    step.skip_image_check = args.skip_image_check
 
-    logger.info(f"Loading manifest: {manifest_path}")
-    records = read_manifest(manifest_path)
-    logger.info(f"Loaded {len(records)} records")
-
-    # Validate
-    logger.info("Validating records...")
-    valid_records, errors = validate_records(
-        records,
-        require_label=True,
-        check_images=not args.skip_image_check,
-    )
-
-    if errors:
-        logger.warning(f"Validation errors ({len(errors)}):")
-        for err in errors[:10]:
-            logger.warning(f"  {err}")
-        if len(errors) > 10:
-            logger.warning(f"  ... and {len(errors) - 10} more")
-
-    logger.info(f"Valid records: {len(valid_records)}/{len(records)}")
-
-    if not valid_records:
-        logger.error("No valid records. Exiting.")
-        return 1
-
-    # Build class mapping
-    class_to_idx = build_class_mapping(valid_records)
-    class_counts = get_class_counts(valid_records)
-
-    logger.info(f"Classes ({len(class_to_idx)}): {list(class_to_idx.keys())}")
-    logger.info(f"Class counts: {class_counts}")
-
-    # Split data
-    preprocess_cfg = cfg.get("preprocess", {})
-    split_ratios = preprocess_cfg.get("split_ratios", {})
-    train_ratio = split_ratios.get("train", 0.7)
-    val_ratio = split_ratios.get("val", 0.15)
-    test_ratio = split_ratios.get("test", 0.15)
-
-    group_by = args.group_by
-    if group_by == "null" or group_by == "none":
-        group_by = None
-
-    seed = args.seed or preprocess_cfg.get("seed", 42)
-
-    logger.info(f"Splitting data (train={train_ratio}, val={val_ratio}, test={test_ratio})")
-    logger.info(f"Group by: {group_by}, Seed: {seed}")
-
-    valid_records = split_data(
-        valid_records,
-        train_ratio=train_ratio,
-        val_ratio=val_ratio,
-        test_ratio=test_ratio,
-        group_by=group_by,
-        seed=seed,
-    )
-
-    # Count splits
-    split_counts = Counter(r["split"] for r in valid_records)
-    logger.info(f"Split distribution: {dict(split_counts)}")
-
-    # Add label_idx to records
-    for record in valid_records:
-        record["label_idx"] = class_to_idx[record["label"]]
-
-    # Save outputs
-    output_dir = Path(args.output_dir)
-    output_manifest = Path(args.output_manifest)
-
-    save_json(class_to_idx, output_dir / "class_to_idx.json")
-    save_json(class_counts, output_dir / "class_counts.json")
-
-    write_manifest(valid_records, output_manifest)
-
-    logger.info(f"Saved class_to_idx.json to {output_dir / 'class_to_idx.json'}")
-    logger.info(f"Saved class_counts.json to {output_dir / 'class_counts.json'}")
-    logger.info(f"Saved manifest_ready.jsonl to {output_manifest}")
-
-    return 0
+    return step.run()
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""03_model.py - VCR Model definition.
+"""04_model.py - VCR Model definition.
 
 This module defines the VCRModel which combines:
 - Backbone (ResNet or EfficientNet)
@@ -7,7 +7,7 @@ This module defines the VCRModel which combines:
 - Classification head
 
 Usage:
-    python 03_model.py --test  # Run a forward pass test
+    python 04_model.py --test  # Run a forward pass test
 """
 
 import argparse
@@ -24,6 +24,7 @@ import src.fusion  # noqa: F401
 import src.losses  # noqa: F401
 
 from src.core.factories import BackboneFactory, FusionFactory, LossFactory
+from src.core.interfaces import PipelineStep
 from src.utils.config import load_config
 
 
@@ -217,12 +218,71 @@ def test_model():
     print("✓ EfficientNet forward pass successful!")
 
 
+class Step04Model(PipelineStep):
+    """Pipeline step for model definition and testing.
+
+    This step:
+    1. Creates or loads a VCRModel
+    2. Optionally runs forward pass tests
+    3. Prints model summary
+    """
+
+    @property
+    def name(self) -> str:
+        return "04_model"
+
+    @property
+    def description(self) -> str:
+        return "Define and test VCR model architecture."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.backbone_name: str = "resnet50"
+        self.fusion_name: str = "msff"
+        self.num_classes: int = 10
+        self.run_test: bool = False
+        self.show_summary: bool = False
+
+    def validate(self) -> bool:
+        """Validate configuration."""
+        return True
+
+    def run(self) -> int:
+        """Execute model step.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if self.run_test:
+            test_model()
+            return 0
+
+        # Create model
+        model = VCRModel(
+            num_classes=self.num_classes,
+            backbone_name=self.backbone_name,
+            fusion_name=self.fusion_name,
+        )
+
+        if self.show_summary:
+            print_model_summary(model)
+        else:
+            print(f"VCRModel: {model.get_num_params() / 1e6:.2f}M parameters")
+            print(f"  Backbone: {self.backbone_name}")
+            print(f"  Fusion: {self.fusion_name}")
+            print(f"  Classes: {self.num_classes}")
+            print("\nUse --summary for detailed layer-by-layer breakdown")
+
+        print("Step04Model completed successfully.")
+        return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="VCR Model")
     parser.add_argument("--test", action="store_true", help="Run forward pass test")
     parser.add_argument("--summary", action="store_true", help="Show model summary")
     parser.add_argument("--backbone", type=str, default="resnet50",
-                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4"],
+                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4", "convnext_tiny", "convnext_small", "convnext_base"],
                         help="Backbone architecture")
     parser.add_argument("--fusion", type=str, default="msff",
                         choices=["msff", "simple_concat"],
@@ -232,27 +292,14 @@ def main():
 
     args = parser.parse_args()
 
-    if args.test:
-        test_model()
-        return 0
+    step = Step04Model(config={})
+    step.backbone_name = args.backbone
+    step.fusion_name = args.fusion
+    step.num_classes = args.num_classes
+    step.run_test = args.test
+    step.show_summary = args.summary
 
-    # Create model
-    model = VCRModel(
-        num_classes=args.num_classes,
-        backbone_name=args.backbone,
-        fusion_name=args.fusion,
-    )
-
-    if args.summary:
-        print_model_summary(model)
-    else:
-        print(f"VCRModel: {model.get_num_params() / 1e6:.2f}M parameters")
-        print(f"  Backbone: {args.backbone}")
-        print(f"  Fusion: {args.fusion}")
-        print(f"  Classes: {args.num_classes}")
-        print("\nUse --summary for detailed layer-by-layer breakdown")
-
-    return 0
+    return step.run()
 
 
 if __name__ == "__main__":

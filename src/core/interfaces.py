@@ -1,6 +1,7 @@
 """Abstract base classes for VCR pipeline components.
 
 These interfaces define the contracts for interchangeable strategies:
+- PipelineStep: Base class for all numbered pipeline steps (01-08)
 - BaseDetector: Vehicle detection
 - BaseBackbone: Feature extraction (multi-scale)
 - BaseLoss: Training loss computation
@@ -222,3 +223,45 @@ class BaseTrainingStrategy(ABC):
         """
         pass
 
+
+class PipelineStep(ABC):
+    """Abstract base class for pipeline steps (01-08).
+
+    All numbered pipeline scripts should implement this interface.
+    """
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        """Initialize the pipeline step.
+
+        Args:
+            config: Configuration dictionary for this step.
+        """
+        self.config = config or {}
+
+    @abstractmethod
+    def run(self) -> int:
+        """Execute the pipeline step.
+
+        Returns:
+            Exit code (0 for success, non-zero for failure).
+        """
+        pass
+
+    def validate(self) -> bool:
+        """Validate inputs before running.
+
+        Returns:
+            True if validation passes, False otherwise.
+        """
+        return True
+
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        """Return the step name (e.g., '01_detect_crop')."""
+        pass
+
+    @property
+    def description(self) -> str:
+        """Return a brief description of what this step does."""
+        return ""

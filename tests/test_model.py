@@ -154,7 +154,7 @@ class TestVCRModel:
         from importlib.util import spec_from_file_location, module_from_spec
         from pathlib import Path
 
-        spec = spec_from_file_location("model", Path(__file__).parent.parent / "03_model.py")
+        spec = spec_from_file_location("model", Path(__file__).parent.parent / "04_model.py")
         model_module = module_from_spec(spec)
         spec.loader.exec_module(model_module)
 
@@ -178,7 +178,7 @@ class TestVCRModel:
         from importlib.util import spec_from_file_location, module_from_spec
         from pathlib import Path
 
-        spec = spec_from_file_location("model", Path(__file__).parent.parent / "03_model.py")
+        spec = spec_from_file_location("model", Path(__file__).parent.parent / "04_model.py")
         model_module = module_from_spec(spec)
         spec.loader.exec_module(model_module)
 

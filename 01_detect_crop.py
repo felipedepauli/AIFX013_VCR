@@ -23,7 +23,7 @@ from PIL import Image
 # Import detectors to trigger factory registration
 import src.detectors  # noqa: F401
 from src.core.factories import DetectorFactory
-from src.core.interfaces import BBox, DetectionResult
+from src.core.interfaces import BBox, DetectionResult, PipelineStep
 from src.utils.config import load_config
 from src.utils.manifest_io import write_manifest
 
@@ -309,6 +309,64 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class Step01DetectCrop(PipelineStep):
+    """Pipeline step for vehicle detection and cropping.
+
+    This step:
+    1. Finds images in raw_dir
+    2. Runs detection (YOLO or manual annotations)
+    3. Optionally crops and saves vehicle images
+    4. Writes manifest_raw.jsonl
+    """
+
+    @property
+    def name(self) -> str:
+        return "01_detect_crop"
+
+    @property
+    def description(self) -> str:
+        return "Detect vehicles in images and optionally crop them."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.raw_dir: Path | None = None
+        self.crops_dir: Path | None = None
+        self.manifests_dir: Path | None = None
+        self.detector_name: str = "yolo"
+        self.detector_cfg: dict[str, Any] = {}
+        self.save_crops: bool = True
+        self.batch_size: int = 16
+
+    def validate(self) -> bool:
+        """Validate that raw_dir exists."""
+        if self.raw_dir is None or not self.raw_dir.exists():
+            logger.error(f"Raw directory does not exist: {self.raw_dir}")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute detection and cropping.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        run_detection(
+            raw_dir=self.raw_dir,
+            manifests_dir=self.manifests_dir,
+            crops_dir=self.crops_dir,
+            detector_name=self.detector_name,
+            detector_cfg=self.detector_cfg,
+            save_crops=self.save_crops,
+            batch_size=self.batch_size,
+        )
+
+        logger.info("Step01DetectCrop completed successfully.")
+        return 0
+
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
@@ -320,6 +378,9 @@ def main() -> int:
         logger.warning(f"Config file not found: {args.config}. Using defaults.")
         cfg = {}
 
+    # Create step instance
+    step = Step01DetectCrop(config=cfg)
+
     # Get paths from config or defaults
     paths_cfg = cfg.get("paths", {})
     
@@ -327,58 +388,45 @@ def main() -> int:
     if args.dataset and args.version:
         dataset_name = f"{args.dataset}_{args.version}"
         base_data_dir = Path("data") / dataset_name
-        raw_dir = base_data_dir / "raw"
-        crops_dir = base_data_dir / "crops"
-        manifests_dir = base_data_dir / "manifests"
+        step.raw_dir = base_data_dir / "raw"
+        step.crops_dir = base_data_dir / "crops"
+        step.manifests_dir = base_data_dir / "manifests"
         
         # IMPORT DATA IF SOURCE PROVIDED
         if args.source_dir:
-            import_data(Path(args.source_dir), raw_dir)
+            import_data(Path(args.source_dir), step.raw_dir)
             
     else:
         # Fallback to config or args
-        raw_dir = Path(args.raw_dir or paths_cfg.get("raw_dir", "data/raw"))
-        crops_dir = Path(paths_cfg.get("crops_dir", "data/crops"))
-        manifests_dir = Path(paths_cfg.get("manifests_dir", "data/manifests"))
+        step.raw_dir = Path(args.raw_dir or paths_cfg.get("raw_dir", "data/raw"))
+        step.crops_dir = Path(paths_cfg.get("crops_dir", "data/crops"))
+        step.manifests_dir = Path(paths_cfg.get("manifests_dir", "data/manifests"))
 
     # Get detector config
     detector_cfg = cfg.get("detector", {})
-    detector_name = args.detector or detector_cfg.get("name", "yolo")
+    step.detector_name = args.detector or detector_cfg.get("name", "yolo")
 
     # Handle save_crops override
     if args.save_crops is not None:
-        save_crops = bool(args.save_crops)
+        step.save_crops = bool(args.save_crops)
     else:
-        save_crops = detector_cfg.get("save_crops", True)
+        step.save_crops = detector_cfg.get("save_crops", True)
 
     # Build detector-specific config
-    if detector_name == "yolo":
-        det_cfg = detector_cfg.get("yolo", {})
-    elif detector_name == "manual":
-        det_cfg = {
+    if step.detector_name == "yolo":
+        step.detector_cfg = detector_cfg.get("yolo", {})
+    elif step.detector_name == "manual":
+        step.detector_cfg = {
             "annotations_file": args.annotations or detector_cfg.get("annotations_file"),
             "annotations_dir": detector_cfg.get("annotations_dir"),
         }
     else:
-        det_cfg = {}
+        step.detector_cfg = {}
 
-    # Validate
-    if not raw_dir.exists():
-        logger.error(f"Raw directory does not exist: {raw_dir}")
-        return 1
+    step.batch_size = args.batch_size
 
-    # Run pipeline
-    run_detection(
-        raw_dir=raw_dir,
-        manifests_dir=manifests_dir,
-        crops_dir=crops_dir,
-        detector_name=detector_name,
-        detector_cfg=det_cfg,
-        save_crops=save_crops,
-        batch_size=args.batch_size,
-    )
-
-    return 0
+    # Run the step
+    return step.run()
 
 
 if __name__ == "__main__":

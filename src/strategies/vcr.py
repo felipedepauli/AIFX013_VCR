@@ -13,18 +13,18 @@ from src.core.factories import LossFactory
 from src.core.interfaces import BaseTrainingStrategy
 
 # Load VCRModel dynamically to avoid circular imports or just standard import if path is fixed
-# Assuming 03_model.py is where VCRModel lives. 
-# Ideal refactor would move VCRModel to src/core/models.py, but for now we import from 03_model.py
+# Assuming 04_model.py is where VCRModel lives. 
+# Ideal refactor would move VCRModel to src/core/models.py, but for now we import from 04_model.py
 sys.path.insert(0, str(Path(__file__).parents[2]))  # Add project root to path
 from importlib.util import spec_from_file_location, module_from_spec
 
 def import_model_class():
-    """Dynamically import VCRModel from 03_model.py."""
+    """Dynamically import VCRModel from 04_model.py."""
     try:
         # Try relative import first if in python path
         # But 03_model is at root, so...
         project_root = Path(__file__).parents[2]
-        spec = spec_from_file_location("model_module", project_root / "03_model.py")
+        spec = spec_from_file_location("model_module", project_root / "04_model.py")
         if spec and spec.loader:
             model_module = module_from_spec(spec)
             spec.loader.exec_module(model_module)
@@ -42,7 +42,7 @@ class VCRStrategy(BaseTrainingStrategy):
     def build_model(self) -> nn.Module:
         """Build VCRModel."""
         if VCRModel is None:
-            raise ImportError("Could not import VCRModel from 03_model.py")
+            raise ImportError("Could not import VCRModel from 04_model.py")
             
         train_cfg = self.config.get("train", {})
         
