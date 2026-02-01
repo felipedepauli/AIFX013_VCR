@@ -109,6 +109,7 @@ def run_optimization(
     fixed_params: dict[str, Any],
     study_config: dict[str, Any],
     experiment_name: str = "VCR-Optimization",
+    storage: str | None = None,
 ) -> optuna.Study:
     """Run Optuna hyperparameter optimization.
     
@@ -161,6 +162,7 @@ def run_optimization(
     
     study = optuna.create_study(
         study_name=study_name,
+        storage=storage,
         direction=direction,
         sampler=sampler,
         pruner=pruner,

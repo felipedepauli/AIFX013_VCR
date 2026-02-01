@@ -1,7 +1,7 @@
 # Optuna Hyperparameter Search Configuration
 
 study:
-  name: "VCR-Optimization"
+  name: "VCR-Mobile-Optimization" # New study for mobile backbones
   direction: "maximize" # maximize val_acc
   n_trials: 100
   timeout: null # seconds, null = unlimited
@@ -24,7 +24,14 @@ hyperparameters:
   # Model architecture
   backbone:
     type: "categorical"
-    choices: ["resnet50", "efficientnet_b0", "convnext_tiny"]
+    choices: [
+        # "resnet50",
+        # "efficientnet_b0",
+        # "convnext_tiny",
+        "mobilenetv4_small",
+        # "fastvit_t8",
+        # "mobileone_s1",
+      ]
 
   fusion:
     type: "categorical"

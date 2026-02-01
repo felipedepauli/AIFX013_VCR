@@ -20,7 +20,7 @@ from src.core.interfaces import PipelineStep
 sys.path.insert(0, str(Path(__file__).parent))
 from importlib.util import spec_from_file_location, module_from_spec
 
-spec = spec_from_file_location("train_module", Path(__file__).parent / "06_train_mlflow.py")
+spec = spec_from_file_location("train_module", Path(__file__).parent / "06_train.py")
 train_module = module_from_spec(spec)
 spec.loader.exec_module(train_module)
 train_fn = train_module.train
@@ -138,12 +138,19 @@ class Step05Optimize(PipelineStep):
         logger.info(f"Starting optimization with {study_config.get('n_trials', 50)} trials")
         logger.info(f"Hyperparameters to optimize: {list(hp_config.keys())}")
 
+        # Use SQLite storage for persistence (allows resuming)
+        storage_path = self.output_dir.parent / "experiments.db"
+        self.output_dir.parent.mkdir(parents=True, exist_ok=True)
+        storage_url = f"sqlite:///{storage_path}"
+        logger.info(f"Using Optuna storage: {storage_url}")
+
         study = run_optimization(
             train_fn=train_wrapper,
             hp_config=hp_config,
             fixed_params=fixed_params,
             study_config=study_config,
             experiment_name=self.experiment_name,
+            storage=storage_url,
         )
 
         # Save study
@@ -162,8 +169,86 @@ class Step05Optimize(PipelineStep):
             print(f"  {k}: {v}")
         print(f"\nStudy saved to: {study_path}")
 
+        # Analyze and save best configs per backbone
+        self._analyze_and_save_best_configs(study, storage_path)
+
         logger.info("Step05Optimize completed successfully.")
         return 0
+
+    def _analyze_and_save_best_configs(self, study: Any, storage_path: Path) -> None:
+        """Analyze study results and save best configuration per backbone.
+        
+        Args:
+            study: Optuna study object
+            storage_path: Path to the SQLite database
+        """
+        from collections import defaultdict
+        import yaml
+        
+        logger.info("Analyzing study results by backbone...")
+        
+        # Group trials by backbone
+        backbone_trials = defaultdict(list)
+        for trial in study.trials:
+            if trial.state.name == 'COMPLETE' and 'backbone' in trial.params:
+                backbone = trial.params['backbone']
+                backbone_trials[backbone].append(trial)
+        
+        if not backbone_trials:
+            logger.warning("No completed trials with backbone parameter found")
+            return
+        
+        # Find best trial per backbone
+        print(f"\n{'='*80}")
+        print("BEST HYPERPARAMETERS PER BACKBONE")
+        print(f"{'='*80}")
+        
+        configs_dir = self.output_dir.parent / "best_configs"
+        configs_dir.mkdir(exist_ok=True)
+        
+        for backbone, trials in sorted(backbone_trials.items()):
+            best_trial = max(trials, key=lambda t: t.value)
+            
+            print(f"\n{backbone.upper()}:")
+            print(f"  Trials tested: {len(trials)}")
+            print(f"  Best trial: #{best_trial.number}")
+            print(f"  Best score: {best_trial.value:.4f}")
+            print(f"  Best hyperparameters:")
+            for key, value in best_trial.params.items():
+                if key != 'backbone':
+                    print(f"    {key}: {value}")
+            
+            # Create config file
+            config = {
+                "training": {
+                    "backbone": backbone,
+                    "strategy": best_trial.params.get("strategy", "vcr"),
+                    "fusion": best_trial.params.get("fusion", "msff"),
+                    "loss": best_trial.params.get("loss_fn", "smooth_modulation"),
+                    "epochs": best_trial.params.get("epochs", 20),
+                    "batch_size": best_trial.params.get("batch_size", 32),
+                    "image_size": best_trial.params.get("image_size", 224),
+                    "lr": best_trial.params.get("lr", 1e-4),
+                    "weight_decay": best_trial.params.get("weight_decay", 1e-4),
+                    "device": best_trial.params.get("device", "auto"),
+                    "use_weighted_sampler": best_trial.params.get("use_weighted_sampler", True),
+                },
+                "metadata": {
+                    "trial_number": best_trial.number,
+                    "best_score": best_trial.value,
+                    "optimization_date": str(best_trial.datetime_complete),
+                }
+            }
+            
+            config_path = configs_dir / f"{backbone}_best.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            logger.info(f"Saved best config for {backbone}: {config_path}")
+        
+        print(f"\n{'='*80}")
+        print(f"✓ All best configs saved to: {configs_dir}")
+        print(f"{'='*80}\n")
 
 
 def main() -> int:
