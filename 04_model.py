@@ -136,7 +136,7 @@ def create_model_from_config(cfg: dict[str, Any], num_classes: int) -> VCRModel:
         backbone_name=model_cfg.get("backbone", "resnet50"),
         backbone_cfg={"pretrained": model_cfg.get("pretrained", True)},
         fusion_name=model_cfg.get("fusion", "msff"),
-        fusion_cfg={},
+        fusion_cfg=model_cfg.get("fusion_cfg", {}),
         dropout=model_cfg.get("dropout", 0.2),
     )
 
@@ -241,7 +241,9 @@ class Step04Model(PipelineStep):
         self.fusion_name: str = "msff"
         self.num_classes: int = 10
         self.run_test: bool = False
+        self.run_test: bool = False
         self.show_summary: bool = False
+        self.fusion_channels: int | None = None
 
     def validate(self) -> bool:
         """Validate configuration."""
@@ -257,11 +259,16 @@ class Step04Model(PipelineStep):
             test_model()
             return 0
 
+        fusion_cfg = {}
+        if self.fusion_channels:
+            fusion_cfg["out_channels"] = self.fusion_channels
+
         # Create model
         model = VCRModel(
             num_classes=self.num_classes,
             backbone_name=self.backbone_name,
             fusion_name=self.fusion_name,
+            fusion_cfg=fusion_cfg,
         )
 
         if self.show_summary:
@@ -282,12 +289,13 @@ def main():
     parser.add_argument("--test", action="store_true", help="Run forward pass test")
     parser.add_argument("--summary", action="store_true", help="Show model summary")
     parser.add_argument("--backbone", type=str, default="resnet50",
-                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4", "convnext_tiny", "convnext_small", "convnext_base", "mobilenetv4_small"],
+                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4", "convnext_tiny", "convnext_small", "convnext_base", "mobilenetv4_small", "colornet_v1"],
                         help="Backbone architecture")
     parser.add_argument("--fusion", type=str, default="msff",
-                        choices=["msff", "simple_concat"],
+                        choices=["msff", "simple_concat", "global_concat"],
                         help="Fusion module")
     parser.add_argument("--num-classes", type=int, default=10, help="Number of classes")
+    parser.add_argument("--fusion-channels", type=int, default=None, help="Fusion output channels")
     parser.add_argument("--config", type=str, default="config.yaml", help="Config file")
 
     args = parser.parse_args()
@@ -298,6 +306,7 @@ def main():
     step.num_classes = args.num_classes
     step.run_test = args.test
     step.show_summary = args.summary
+    step.fusion_channels = args.fusion_channels
 
     return step.run()
 

@@ -5,6 +5,7 @@ from src.backbones.convnext import ConvNeXtBackbone
 from src.backbones.mobilenet import MobileNetV4Backbone
 from src.backbones.fastvit import FastViTBackbone
 from src.backbones.mobileone import MobileOneBackbone
+import src.backbones.colornet  # noqa: F401
 
 __all__ = [
     "ResNetBackbone",

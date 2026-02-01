@@ -27,10 +27,21 @@ preprocess:
 
 # Model
 model:
-  backbone: "resnet50" # "resnet50" or "efficientnet_b4"
-  fusion: "msff" # "msff" or "simple_concat"
+  backbone: "colornet_v1"
+  fusion: "global_concat"
   num_classes: 24
-  pretrained: true
+  pretrained: false # IMPORTANTE: ColorNet é treinada do zero (Scratch)
+
+# Training
+training:
+  seed: 42
+  epochs: 3 # Aumentado para permitir convergência do zero
+  batch_size: 32 # Ok, ajuste se sobrar/faltar VRAM
+  lr: 0.001 # Taxa inicial boa para Scratch
+  weight_decay: 0.01 # Ajustado para AdamW (geralmente pede decay maior que Adam)
+  input_size: 224
+  num_workers: 4
+  early_stopping_patience: 15 # Vai parar o treino se não melhorar em 15 épocas
 
 # Loss
 loss:
@@ -40,17 +51,6 @@ loss:
     alpha: null # null = balanced
   smooth_modulation:
     tau: 1.0
-
-# Training
-training:
-  seed: 42
-  epochs: 2
-  batch_size: 32
-  lr: 0.001
-  weight_decay: 0.0001
-  input_size: 224
-  num_workers: 4
-  early_stopping_patience: 15
 
 # MLflow
 mlflow:

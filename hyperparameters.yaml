@@ -25,17 +25,16 @@ hyperparameters:
   backbone:
     type: "categorical"
     choices: [
-        # "resnet50",
-        # "efficientnet_b0",
-        # "convnext_tiny",
-        "mobilenetv4_small",
-        # "fastvit_t8",
-        # "mobileone_s1",
+        "colornet_v1", # 1.5M params (Our Star)
+        "mobilenetv4_small", # 4.5M params (Strong baseline)
+        "fastvit_t8", # 6.3M params (Fastest inference)
+        "resnet18", # 11M params (Robust standard)
+        "efficientnet_b0", # 6.6M params (High accuracy)
       ]
 
   fusion:
     type: "categorical"
-    choices: ["msff", "simple_concat"]
+    choices: ["msff", "global_concat", "simple_concat"]
 
   loss_fn:
     type: "categorical"
@@ -56,16 +55,16 @@ hyperparameters:
 
   batch_size:
     type: "categorical"
-    choices: [16, 32, 64]
+    choices: [32, 64] # 16 is usually too small for batch norm stability
 
   # Data augmentation
   image_size:
     type: "categorical"
-    choices: [224, 256, 288]
+    choices: [224, 256] # 288 slows down training significantly
 
 # Fixed parameters (not optimized)
 fixed:
-  epochs: 200 # Shorter for optimization trials
+  epochs: 200 # User requested keeping this high given early stopping
   use_weighted_sampler: true
   device: "auto"
   experiment_name: "VCR-Optimization"

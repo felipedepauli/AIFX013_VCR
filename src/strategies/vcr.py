@@ -44,30 +44,42 @@ class VCRStrategy(BaseTrainingStrategy):
         if VCRModel is None:
             raise ImportError("Could not import VCRModel from 04_model.py")
             
-        train_cfg = self.config.get("train", {})
+        # Architecture params are in "model" section
+        model_cfg = self.config.get("model", {})
+        train_cfg = self.config.get("training", {}) # Fallback to looking here? No, stick to structure
         
         # Determine architecture params
         # Priorities: Config > Defaults
         return VCRModel(
             num_classes=self.num_classes,
-            backbone_name=train_cfg.get("backbone", "resnet50"),
-            fusion_name=train_cfg.get("fusion", "msff"),
-            dropout=train_cfg.get("dropout", 0.2),
+            backbone_name=model_cfg.get("backbone", "resnet50"),
+            fusion_name=model_cfg.get("fusion", "msff"),
+            dropout=float(model_cfg.get("dropout", 0.2)),
         )
 
     def configure_loss(self) -> nn.Module:
         """Configure loss function."""
-        train_cfg = self.config.get("train", {})
-        loss_fn = train_cfg.get("loss", "smooth_modulation")
+        # Loss params are in "loss" section usually, but code previously looked in train
+        # Config has "loss" section with "smooth_modulation" etc.
+        # But Strategy looked in "train".
+        # config.yaml has:
+        # loss:
+        #   name: "smooth_modulation"
+        loss_section = self.config.get("loss", {})
+        train_section = self.config.get("training", {})
+        
+        loss_fn = loss_section.get("name", "smooth_modulation")
         loss_cfg = {
-            "max_epoch": train_cfg.get("epochs", 50),
-            "alpha": train_cfg.get("alpha", 0.1), # Default for smooth loss
+            "max_epoch": int(train_section.get("epochs", 50)),
+            # alpha might be in loss section? config.yaml has smooth_modulation: tau: 1.0. No alpha?
+            # Code had alpha: 0.1 default.
+            "alpha": 0.1, 
         }
         return LossFactory.create(loss_fn, loss_cfg)
 
     def configure_optimizers(self, model: nn.Module) -> tuple[torch.optim.Optimizer, Any]:
         """Configure AdamW and CosineAnnealingLR."""
-        train_cfg = self.config.get("train", {})
+        train_cfg = self.config.get("training", {})
         lr = float(train_cfg.get("lr", 1e-4))
         weight_decay = float(train_cfg.get("weight_decay", 1e-4))
         epochs = int(train_cfg.get("epochs", 50))
