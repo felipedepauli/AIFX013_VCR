@@ -282,7 +282,7 @@ def main():
     parser.add_argument("--test", action="store_true", help="Run forward pass test")
     parser.add_argument("--summary", action="store_true", help="Show model summary")
     parser.add_argument("--backbone", type=str, default="resnet50",
-                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4", "convnext_tiny", "convnext_small", "convnext_base"],
+                        choices=["resnet18", "resnet34", "resnet50", "efficientnet_b0", "efficientnet_b4", "convnext_tiny", "convnext_small", "convnext_base", "mobilenetv4_small"],
                         help="Backbone architecture")
     parser.add_argument("--fusion", type=str, default="msff",
                         choices=["msff", "simple_concat"],
