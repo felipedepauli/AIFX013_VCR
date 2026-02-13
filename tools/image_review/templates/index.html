@@ -165,6 +165,15 @@
                         ☐ Deselect Page
                     </button>
                 </div>
+                <div class="direction-actions">
+                    <span class="direction-label">Direction:</span>
+                    <button class="direction-btn front" onclick="setAllDirection('front')" title="Set all vehicles to Front (coming toward camera)">
+                        ▼ Front
+                    </button>
+                    <button class="direction-btn back" onclick="setAllDirection('back')" title="Set all vehicles to Back (going away from camera)">
+                        ▲ Back
+                    </button>
+                </div>
                 <div class="toolbar-actions">
                     <button class="filter-toggle-header" onclick="toggleFilterPanel()" title="Toggle Filters ([)" aria-label="Toggle filter panel">
                         <span id="filter-toggle-icon">◀</span> Filters

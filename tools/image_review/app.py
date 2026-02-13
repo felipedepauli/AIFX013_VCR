@@ -409,6 +409,15 @@ def browse_directory():
 
 # ============== Phase 10: Filter Panel ==============
 
+# Default flags (used when no project settings exist)
+DEFAULT_QUALITY_FLAGS = ['bin', 'review', 'ok', 'move']
+DEFAULT_PERSPECTIVE_FLAGS = [
+    'close-up-day', 'close-up-night',
+    'pan-day', 'pan-night',
+    'super_pan_day', 'super_pan_night',
+    'cropped-day', 'cropped-night'
+]
+
 @app.route('/api/filter/options', methods=['GET'])
 def get_filter_options():
     """Get available filter options with counts."""
@@ -420,22 +429,29 @@ def get_filter_options():
               if not img.get('deleted', False)]
     
     directory = Path(project_manager.project_data['directory'])
+    settings = project_manager.project_data.get('settings', {})
     
-    # Initialize counters
-    quality_flags_count = {}
-    perspective_flags_count = {}
+    # Get available flags from settings (or defaults)
+    available_quality = settings.get('quality_flags', DEFAULT_QUALITY_FLAGS)
+    available_perspective = settings.get('perspective_flags', DEFAULT_PERSPECTIVE_FLAGS)
+    
+    # Initialize counters with all available flags (count=0)
+    quality_flags_count = {flag: 0 for flag in available_quality}
+    perspective_flags_count = {flag: 0 for flag in available_perspective}
     color_count = {}
     brand_count = {}
     model_count = {}
+    label_count = {}  # The 'label' field
     type_count = {}
     sub_type_count = {}
+    direction_count = {'front': 0, 'back': 0}  # Vehicle direction
     
     for img in images:
-        # Count quality flags
+        # Count quality flags (including any legacy flags not in settings)
         for flag in img.get('quality_flags', []):
             quality_flags_count[flag] = quality_flags_count.get(flag, 0) + 1
         
-        # Count perspective flags
+        # Count perspective flags (including any legacy flags not in settings)
         for flag in img.get('perspective_flags', []):
             perspective_flags_count[flag] = perspective_flags_count.get(flag, 0) + 1
         
@@ -460,6 +476,10 @@ def get_filter_options():
                     if model:
                         model_count[model] = model_count.get(model, 0) + 1
                     
+                    label = obj.get('label')
+                    if label:
+                        label_count[label] = label_count.get(label, 0) + 1
+                    
                     vtype = obj.get('type')
                     if vtype:
                         type_count[vtype] = type_count.get(vtype, 0) + 1
@@ -467,10 +487,28 @@ def get_filter_options():
                     sub_type = obj.get('sub_type')
                     if sub_type:
                         sub_type_count[sub_type] = sub_type_count.get(sub_type, 0) + 1
+                    
+                    # Count direction (default to 'front' if missing)
+                    direction = obj.get('direction', 'front')
+                    direction_count[direction] = direction_count.get(direction, 0) + 1
             except:
                 pass  # Skip files that can't be read
     
     # Convert to sorted lists of {value, count}
+    # For flags: sort by defined order first (from settings), then by count for extras
+    def to_flag_option_list(count_dict, defined_order):
+        result = []
+        # First add flags in defined order
+        for flag in defined_order:
+            if flag in count_dict:
+                result.append({'value': flag, 'count': count_dict[flag]})
+        # Then add any extra flags (legacy) sorted by count
+        extras = [(k, v) for k, v in count_dict.items() if k not in defined_order]
+        extras.sort(key=lambda x: (-x[1], x[0]))
+        for k, v in extras:
+            result.append({'value': k, 'count': v})
+        return result
+    
     def to_option_list(count_dict):
         return sorted([{'value': k, 'count': v} for k, v in count_dict.items()], 
                       key=lambda x: (-x['count'], x['value']))
@@ -478,11 +516,13 @@ def get_filter_options():
     return jsonify({
         'success': True,
         'data': {
-            'quality_flags': to_option_list(quality_flags_count),
-            'perspective_flags': to_option_list(perspective_flags_count),
+            'quality_flags': to_flag_option_list(quality_flags_count, available_quality),
+            'perspective_flags': to_flag_option_list(perspective_flags_count, available_perspective),
+            'direction': to_option_list(direction_count),
             'color': to_option_list(color_count),
             'brand': to_option_list(brand_count),
             'model': to_option_list(model_count),
+            'label': to_option_list(label_count),
             'type': to_option_list(type_count),
             'sub_type': to_option_list(sub_type_count),
             'total_images': len(images)
@@ -510,9 +550,9 @@ def apply_filters_to_images(images, filters, directory):
             if not img_flags.intersection(set(filters['perspective_flags'])):
                 continue
         
-        # Check label filters - need to load JSON
+        # Check label filters (including direction) - need to load JSON
         label_filters = {k: v for k, v in filters.items() 
-                        if k in ('color', 'brand', 'model', 'type', 'sub_type') and v}
+                        if k in ('color', 'brand', 'model', 'label', 'type', 'sub_type', 'direction') and v}
         
         if label_filters:
             # Must have JSON file to match label filters
@@ -529,7 +569,11 @@ def apply_filters_to_images(images, filters, directory):
                 for obj in label_data:
                     obj_matches = True
                     for key, values in label_filters.items():
-                        obj_value = obj.get(key)
+                        if key == 'direction':
+                            # Direction defaults to 'front' if missing
+                            obj_value = obj.get(key, 'front')
+                        else:
+                            obj_value = obj.get(key)
                         if obj_value not in values:
                             obj_matches = False
                             break
@@ -573,9 +617,11 @@ def get_images():
     filters = {
         'quality_flags': request.args.getlist('filter_quality_flags'),
         'perspective_flags': request.args.getlist('filter_perspective_flags'),
+        'direction': request.args.getlist('filter_direction'),
         'color': request.args.getlist('filter_color'),
         'brand': request.args.getlist('filter_brand'),
         'model': request.args.getlist('filter_model'),
+        'label': request.args.getlist('filter_label'),
         'type': request.args.getlist('filter_type'),
         'sub_type': request.args.getlist('filter_sub_type')
     }
@@ -736,6 +782,7 @@ def get_label_data_for_image(seq_id: int) -> dict:
             'rect': rect,
             'rect_percent': rect_percent,
             'center_percent': center_percent,
+            'direction': obj.get('direction', 'front'),  # Default to 'front'
             'labels': {
                 'color': obj.get('color', None),
                 'brand': obj.get('brand', None),
@@ -1257,11 +1304,139 @@ def apply_flag_to_all():
     })
 
 
+# ============== Vehicle Direction (Phase 11) ==============
+
+@app.route('/api/vehicle/<int:seq_id>/<int:vehicle_idx>/direction', methods=['POST'])
+def toggle_vehicle_direction(seq_id: int, vehicle_idx: int):
+    """Toggle direction flag for a specific vehicle in an image."""
+    if not project_manager.project_data:
+        return jsonify({'success': False, 'error': 'No project loaded'}), 400
+    
+    data = request.get_json()
+    new_direction = data.get('direction')
+    
+    if new_direction not in ('front', 'back'):
+        return jsonify({'success': False, 'error': "Invalid direction. Must be 'front' or 'back'"}), 400
+    
+    # Find the image
+    image = find_image_by_seq_id(seq_id)
+    if not image:
+        return jsonify({'success': False, 'error': 'Image not found'}), 404
+    
+    if not image.get('json_filename'):
+        return jsonify({'success': False, 'error': 'No label file for this image'}), 404
+    
+    # Load label JSON
+    directory = Path(project_manager.project_data['directory'])
+    json_path = directory / image['json_filename']
+    
+    if not json_path.exists():
+        return jsonify({'success': False, 'error': 'Label file not found'}), 404
+    
+    try:
+        with open(json_path, 'r') as f:
+            labels = json.load(f)
+        
+        if vehicle_idx < 0 or vehicle_idx >= len(labels):
+            return jsonify({'success': False, 'error': 'Vehicle index out of range'}), 400
+        
+        old_direction = labels[vehicle_idx].get('direction', 'front')
+        
+        # Update direction
+        labels[vehicle_idx]['direction'] = new_direction
+        
+        # Save back to file (atomic write)
+        temp_path = json_path.with_suffix('.json.tmp')
+        with open(temp_path, 'w') as f:
+            json.dump(labels, f, indent=2)
+        temp_path.replace(json_path)
+        
+        print(f"DIRECTION: {image['filename']} vehicle[{vehicle_idx}]: {old_direction} -> {new_direction}")
+        
+        return jsonify({
+            'success': True,
+            'direction': new_direction,
+            'message': f'Direction set to {new_direction}'
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/direction/apply-to-all', methods=['POST'])
+def apply_direction_to_all():
+    """Apply direction to all vehicles in all images (or selected images)."""
+    if not project_manager.project_data:
+        return jsonify({'success': False, 'error': 'No project loaded'}), 400
+    
+    data = request.get_json()
+    new_direction = data.get('direction')
+    seq_ids = data.get('seq_ids')  # Optional: specific images to update
+    
+    if new_direction not in ('front', 'back'):
+        return jsonify({'success': False, 'error': "Invalid direction. Must be 'front' or 'back'"}), 400
+    
+    directory = Path(project_manager.project_data['directory'])
+    
+    # Get images to process
+    if seq_ids:
+        images = [img for img in project_manager.project_data['images'] 
+                  if img['seq_id'] in seq_ids and not img.get('deleted', False)]
+    else:
+        images = [img for img in project_manager.project_data['images'] 
+                  if not img.get('deleted', False)]
+    
+    updated_images = 0
+    updated_vehicles = 0
+    
+    for image in images:
+        if not image.get('json_filename'):
+            continue
+        
+        json_path = directory / image['json_filename']
+        if not json_path.exists():
+            continue
+        
+        try:
+            with open(json_path, 'r') as f:
+                labels = json.load(f)
+            
+            # Update direction for all vehicles in this image
+            changed = False
+            for vehicle in labels:
+                if vehicle.get('direction', 'front') != new_direction:
+                    vehicle['direction'] = new_direction
+                    changed = True
+                    updated_vehicles += 1
+            
+            if changed:
+                # Save back to file (atomic write)
+                temp_path = json_path.with_suffix('.json.tmp')
+                with open(temp_path, 'w') as f:
+                    json.dump(labels, f, indent=2)
+                temp_path.replace(json_path)
+                updated_images += 1
+        except Exception as e:
+            print(f"Error updating {image['filename']}: {e}")
+            continue
+    
+    print(f"BULK DIRECTION: Set {new_direction} for {updated_vehicles} vehicles in {updated_images} images")
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'direction': new_direction,
+            'updated_images': updated_images,
+            'updated_vehicles': updated_vehicles
+        },
+        'message': f'Set {new_direction} for {updated_vehicles} vehicles in {updated_images} images'
+    })
+
+
 # ============== Main ==============
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("🖼️  Image Review Tool - Phase 8")
+    print("🖼️  Image Review Tool")
     print("=" * 50)
     print(f"Projects directory: {PROJECTS_DIR.absolute()}")
     print("Starting server at http://localhost:5000")

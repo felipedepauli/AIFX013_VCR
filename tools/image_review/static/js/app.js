@@ -104,6 +104,64 @@ const ALL_LABELS = ['color', 'brand', 'model', 'label', 'type', 'sub_type', 'lp_
 const DEFAULT_VISIBLE_LABELS = ['color', 'brand', 'model', 'type'];
 
 // ============================================
+// Centralized Flag Access (Single Source of Truth)
+// ============================================
+
+// Get available quality flags from project settings or defaults
+function getAvailableQualityFlags() {
+    return projectData?.settings?.quality_flags || DEFAULT_QUALITY_FLAGS;
+}
+
+// Get available perspective flags from project settings or defaults
+function getAvailablePerspectiveFlags() {
+    return projectData?.settings?.perspective_flags || DEFAULT_PERSPECTIVE_FLAGS;
+}
+
+// Get flag color - checks predefined colors, falls back to generated color
+function getFlagColor(flag, type = 'quality') {
+    // Check predefined colors first
+    const predefinedColor = FLAG_CONFIG[type]?.colors?.[flag];
+    if (predefinedColor) return predefinedColor;
+    
+    // Generate consistent color from flag name hash
+    return generateColorFromFlag(flag, type);
+}
+
+// Generate a consistent color from flag name
+function generateColorFromFlag(flag, type) {
+    // Simple hash function
+    let hash = 0;
+    for (let i = 0; i < flag.length; i++) {
+        hash = flag.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    // Base hue on type (quality = warm, perspective = cool)
+    const baseHue = type === 'quality' ? 0 : 180;
+    const hue = (Math.abs(hash) % 120) + baseHue;
+    const saturation = 65 + (Math.abs(hash >> 8) % 20);
+    const lightness = 45 + (Math.abs(hash >> 16) % 15);
+    
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+}
+
+// Refresh all flag-dependent UI components
+function refreshFlagDependentUI() {
+    // Refresh filter panel
+    loadFilterOptions();
+    
+    // Refresh flag modal if open
+    if (flagModalState.isOpen) {
+        renderFlagCheckboxes();
+    }
+    
+    // Refresh default options if startup modal is visible
+    const startupModal = document.getElementById('startup');
+    if (startupModal && !startupModal.classList.contains('hidden')) {
+        populateDefaultOptions();
+    }
+}
+
+// ============================================
 // Initialization
 // ============================================
 
@@ -320,9 +378,13 @@ function handleKeyboard(e) {
 // ============================================
 
 function populateDefaultOptions() {
+    // Get available flags from project settings or defaults
+    const qualityFlags = getAvailableQualityFlags();
+    const perspectiveFlags = getAvailablePerspectiveFlags();
+    
     // Populate quality flags radio buttons
     const qualityContainer = document.getElementById('default-quality-flags');
-    qualityContainer.innerHTML = DEFAULT_QUALITY_FLAGS.map((flag, i) => `
+    qualityContainer.innerHTML = qualityFlags.map((flag, i) => `
         <label>
             <input type="radio" name="default-quality" value="${flag}" ${i === 1 ? 'checked' : ''}>
             ${flag}
@@ -336,17 +398,17 @@ function populateDefaultOptions() {
             <input type="radio" name="default-perspective" value="" checked>
             None
         </label>
-    ` + DEFAULT_PERSPECTIVE_FLAGS.slice(0, 4).map(flag => `
+    ` + perspectiveFlags.slice(0, 4).map(flag => `
         <label>
             <input type="radio" name="default-perspective" value="${flag}">
             ${flag}
         </label>
-    `).join('') + `
+    `).join('') + (perspectiveFlags.length > 4 ? `
         <label>
             <input type="radio" name="default-perspective" value="">
             <em>+ more...</em>
         </label>
-    `;
+    ` : '');
     
     // Populate visible labels checkboxes
     const labelsContainer = document.getElementById('visible-labels');
@@ -1354,6 +1416,12 @@ async function renderModalLabels(seqId) {
             bbox.style.height = `${obj.rect_percent.height}%`;
             bbox.style.borderColor = boxBorderColor;
             bbox.style.borderWidth = '3px';
+            
+            // Add direction indicator to bounding box (modal)
+            const direction = obj.direction || 'front';
+            const dirIndicator = createDirectionIndicator(seqId, idx, direction);
+            bbox.appendChild(dirIndicator);
+            
             overlay.appendChild(bbox);
         }
         
@@ -1850,6 +1918,12 @@ async function renderLabels(seqId) {
             bbox.style.width = `${obj.rect_percent.width}%`;
             bbox.style.height = `${obj.rect_percent.height}%`;
             bbox.style.borderColor = boxBorderColor;
+            
+            // Add direction indicator to bounding box
+            const direction = obj.direction || 'front';
+            const dirIndicator = createDirectionIndicator(seqId, idx, direction);
+            bbox.appendChild(dirIndicator);
+            
             overlay.appendChild(bbox);
         }
         
@@ -2374,16 +2448,20 @@ function openFlagModal(seqId) {
     flagModalState.selectedQualityFlags = new Set();
     flagModalState.selectedPerspectiveFlags = new Set();
     
+    // Get available flags from centralized functions
+    const qualityFlags = getAvailableQualityFlags();
+    const perspectiveFlags = getAvailablePerspectiveFlags();
+    
     qualityPills.forEach(pill => {
         const flag = pill.textContent.trim();
-        if (FLAG_CONFIG.quality.flags.includes(flag)) {
+        if (qualityFlags.includes(flag)) {
             flagModalState.selectedQualityFlags.add(flag);
         }
     });
     
     perspectivePills.forEach(pill => {
         const flag = pill.textContent.trim();
-        if (FLAG_CONFIG.perspective.flags.includes(flag)) {
+        if (perspectiveFlags.includes(flag)) {
             flagModalState.selectedPerspectiveFlags.add(flag);
         }
     });
@@ -2438,13 +2516,14 @@ function closeFlagModal() {
 
 // Render flag checkboxes in modal
 function renderFlagCheckboxes() {
-    // Quality flags
+    // Quality flags - use centralized function
+    const qualityFlags = getAvailableQualityFlags();
     const qualityGrid = document.getElementById('quality-flags-grid');
     qualityGrid.innerHTML = '';
     
-    FLAG_CONFIG.quality.flags.forEach(flag => {
+    qualityFlags.forEach(flag => {
         const isChecked = flagModalState.selectedQualityFlags.has(flag);
-        const color = FLAG_CONFIG.quality.colors[flag];
+        const color = getFlagColor(flag, 'quality');
         
         qualityGrid.innerHTML += `
             <label class="flag-checkbox ${isChecked ? 'checked' : ''}" data-flag="${flag}">
@@ -2456,13 +2535,14 @@ function renderFlagCheckboxes() {
         `;
     });
     
-    // Perspective flags
+    // Perspective flags - use centralized function
+    const perspectiveFlags = getAvailablePerspectiveFlags();
     const perspectiveGrid = document.getElementById('perspective-flags-grid');
     perspectiveGrid.innerHTML = '';
     
-    FLAG_CONFIG.perspective.flags.forEach(flag => {
+    perspectiveFlags.forEach(flag => {
         const isChecked = flagModalState.selectedPerspectiveFlags.has(flag);
-        const color = FLAG_CONFIG.perspective.colors[flag];
+        const color = getFlagColor(flag, 'perspective');
         
         perspectiveGrid.innerHTML += `
             <label class="flag-checkbox ${isChecked ? 'checked' : ''}" data-flag="${flag}">
@@ -2618,7 +2698,8 @@ function cycleQualityFlag() {
             currentFlags.push(pill.textContent.trim());
         });
         
-        const order = FLAG_CONFIG.quality.flags;
+        // Use centralized function to get available flags
+        const order = getAvailableQualityFlags();
         let nextFlag;
         
         if (currentFlags.length === 0) {
@@ -2875,10 +2956,10 @@ function toggleVisibleLabelSetting(label, isVisible) {
 // Render quality flags settings
 function renderQualityFlagsSettings() {
     const container = document.getElementById('quality-flags-tags');
-    const flags = projectData?.settings?.quality_flags || FLAG_CONFIG.quality.flags;
+    const flags = getAvailableQualityFlags();
     
     container.innerHTML = flags.map(flag => `
-        <span class="flag-tag">
+        <span class="flag-tag" style="background: ${getFlagColor(flag, 'quality')}">
             ${flag}
             <button class="remove-flag" onclick="removeQualityFlag('${flag}')" title="Remove">✕</button>
         </span>
@@ -2898,10 +2979,10 @@ function renderQualityFlagsSettings() {
 // Render perspective flags settings
 function renderPerspectiveFlagsSettings() {
     const container = document.getElementById('perspective-flags-tags');
-    const flags = projectData?.settings?.perspective_flags || FLAG_CONFIG.perspective.flags;
+    const flags = getAvailablePerspectiveFlags();
     
     container.innerHTML = flags.map(flag => `
-        <span class="flag-tag">
+        <span class="flag-tag" style="background: ${getFlagColor(flag, 'perspective')}">
             ${flag}
             <button class="remove-flag" onclick="removePerspectiveFlag('${flag}')" title="Remove">✕</button>
         </span>
@@ -2925,7 +3006,7 @@ function addQualityFlag() {
     
     if (!flagName) return;
     
-    const flags = projectData?.settings?.quality_flags || [...FLAG_CONFIG.quality.flags];
+    const flags = getAvailableQualityFlags().slice(); // Copy array
     if (flags.includes(flagName)) {
         showNotification('Flag already exists', 'warning');
         return;
@@ -2937,15 +3018,13 @@ function addQualityFlag() {
     input.value = '';
     renderQualityFlagsSettings();
     
-    // Update flag modal if open
-    if (flagModalState.isOpen) {
-        renderFlagCheckboxes();
-    }
+    // Refresh all flag-dependent UI
+    refreshFlagDependentUI();
 }
 
 // Remove quality flag
 function removeQualityFlag(flag) {
-    const flags = projectData?.settings?.quality_flags || [...FLAG_CONFIG.quality.flags];
+    const flags = getAvailableQualityFlags().slice(); // Copy array
     const newFlags = flags.filter(f => f !== flag);
     
     updateSetting('quality_flags', newFlags);
@@ -2956,6 +3035,9 @@ function removeQualityFlag(flag) {
     }
     
     renderQualityFlagsSettings();
+    
+    // Refresh all flag-dependent UI
+    refreshFlagDependentUI();
 }
 
 // Add perspective flag
@@ -2965,7 +3047,7 @@ function addPerspectiveFlag() {
     
     if (!flagName) return;
     
-    const flags = projectData?.settings?.perspective_flags || [...FLAG_CONFIG.perspective.flags];
+    const flags = getAvailablePerspectiveFlags().slice(); // Copy array
     if (flags.includes(flagName)) {
         showNotification('Flag already exists', 'warning');
         return;
@@ -2976,11 +3058,14 @@ function addPerspectiveFlag() {
     
     input.value = '';
     renderPerspectiveFlagsSettings();
+    
+    // Refresh all flag-dependent UI
+    refreshFlagDependentUI();
 }
 
 // Remove perspective flag
 function removePerspectiveFlag(flag) {
-    const flags = projectData?.settings?.perspective_flags || [...FLAG_CONFIG.perspective.flags];
+    const flags = getAvailablePerspectiveFlags().slice(); // Copy array
     const newFlags = flags.filter(f => f !== flag);
     
     updateSetting('perspective_flags', newFlags);
@@ -2990,6 +3075,9 @@ function removePerspectiveFlag(flag) {
     }
     
     renderPerspectiveFlagsSettings();
+    
+    // Refresh all flag-dependent UI
+    refreshFlagDependentUI();
 }
 
 // Update a single setting
@@ -3099,6 +3187,146 @@ async function applyDefaultFlagToAll(type, flag) {
     } catch (error) {
         console.error('Failed to apply flag to all:', error);
         showNotification('Failed to apply flag to all images', 'error');
+    }
+}
+
+// ============================================
+// Phase 11: Vehicle Direction Flag
+// ============================================
+
+/**
+ * Toggle the direction (front/back) of a vehicle
+ * @param {Event} event - Click event
+ * @param {number} seqId - Image sequence ID
+ * @param {number} vehicleIdx - Vehicle index within the image
+ */
+async function toggleDirection(event, seqId, vehicleIdx) {
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const indicator = event.target.closest('.direction-indicator');
+    if (!indicator || indicator.classList.contains('saving')) return;
+    
+    const currentDirection = indicator.classList.contains('front') ? 'front' : 'back';
+    const newDirection = currentDirection === 'front' ? 'back' : 'front';
+    
+    // Optimistic UI update
+    indicator.classList.remove(currentDirection);
+    indicator.classList.add(newDirection, 'toggling');
+    indicator.innerHTML = newDirection === 'front' ? '▼' : '▲';
+    indicator.title = newDirection === 'front' ? 'Front (coming) - Click to toggle' : 'Back (going) - Click to toggle';
+    
+    // Remove animation class after animation completes
+    setTimeout(() => indicator.classList.remove('toggling'), 300);
+    
+    // Mark as saving
+    indicator.classList.add('saving');
+    
+    try {
+        const response = await fetch(`/api/vehicle/${seqId}/${vehicleIdx}/direction`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ direction: newDirection })
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to save');
+        }
+        
+        // Update label cache
+        if (labelCache.has(seqId)) {
+            const cached = labelCache.get(seqId);
+            if (cached.objects && cached.objects[vehicleIdx]) {
+                cached.objects[vehicleIdx].direction = newDirection;
+            }
+        }
+        
+        showNotification(`Direction: ${newDirection}`, 'success');
+    } catch (error) {
+        // Revert on failure
+        indicator.classList.remove(newDirection);
+        indicator.classList.add(currentDirection);
+        indicator.innerHTML = currentDirection === 'front' ? '▼' : '▲';
+        indicator.title = currentDirection === 'front' ? 'Front (coming) - Click to toggle' : 'Back (going) - Click to toggle';
+        showNotification('Failed to update direction', 'error');
+        console.error('Direction toggle error:', error);
+    } finally {
+        indicator.classList.remove('saving');
+    }
+}
+
+/**
+ * Create a direction indicator element
+ * @param {number} seqId - Image sequence ID
+ * @param {number} vehicleIdx - Vehicle index
+ * @param {string} direction - Current direction ('front' or 'back')
+ * @returns {HTMLElement} Direction indicator element
+ */
+function createDirectionIndicator(seqId, vehicleIdx, direction) {
+    const indicator = document.createElement('div');
+    indicator.className = `direction-indicator ${direction}`;
+    indicator.innerHTML = direction === 'front' ? '▼' : '▲';
+    indicator.title = direction === 'front' ? 'Front (coming) - Click to toggle' : 'Back (going) - Click to toggle';
+    indicator.addEventListener('click', (e) => toggleDirection(e, seqId, vehicleIdx));
+    return indicator;
+}
+
+/**
+ * Set direction for all vehicles (in selected images or all images)
+ * @param {string} direction - 'front' or 'back'
+ */
+async function setAllDirection(direction) {
+    if (direction !== 'front' && direction !== 'back') {
+        showNotification('Invalid direction', 'error');
+        return;
+    }
+    
+    // Check if there are selected images
+    const selectedIds = Array.from(gridState.selectedImages);
+    const hasSelection = selectedIds.length > 0;
+    
+    // Confirm action
+    const targetDesc = hasSelection 
+        ? `${selectedIds.length} selected image(s)` 
+        : 'ALL images';
+    
+    const confirmed = confirm(
+        `Set all vehicles to "${direction}" in ${targetDesc}?\n\n` +
+        `This will update the direction flag for every vehicle.`
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+        showNotification(`Setting direction to ${direction}...`, 'info');
+        
+        const response = await fetch('/api/direction/apply-to-all', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                direction: direction,
+                seq_ids: hasSelection ? selectedIds : null
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || 'Failed to apply direction');
+        }
+        
+        // Clear label cache to force refresh
+        labelCache.clear();
+        
+        // Refresh displayed images
+        refreshAllLabels();
+        
+        showNotification(result.message, 'success');
+    } catch (error) {
+        console.error('Failed to set direction:', error);
+        showNotification('Failed to set direction', 'error');
     }
 }
 
@@ -3219,6 +3447,8 @@ function renderFilterSections() {
     const sections = [
         { key: 'quality_flags', title: 'Quality Flags', icon: '🏷️' },
         { key: 'perspective_flags', title: 'Perspective', icon: '📐' },
+        { key: 'direction', title: 'Direction', icon: '↕️' },
+        { key: 'label', title: 'Label', icon: '🏷️' },
         { key: 'color', title: 'Color', icon: '🎨' },
         { key: 'brand', title: 'Brand', icon: '🏢' },
         { key: 'model', title: 'Model', icon: '🚗' },

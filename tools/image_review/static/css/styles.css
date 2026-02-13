@@ -981,6 +981,71 @@ header h1 {
     border-width: 2px;
 }
 
+/* Direction Indicator */
+.direction-indicator {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 22px;
+    height: 22px;
+    background: rgba(0, 0, 0, 0.75);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+    z-index: 15;
+    pointer-events: auto;
+    user-select: none;
+}
+
+.direction-indicator:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.15);
+}
+
+.direction-indicator.front {
+    color: #4CAF50;
+}
+
+.direction-indicator.back {
+    color: #FF9800;
+}
+
+.direction-indicator.saving {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+@keyframes direction-toggle {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.3); }
+    100% { transform: scale(1); }
+}
+
+.direction-indicator.toggling {
+    animation: direction-toggle 0.3s ease-out;
+}
+
+/* Smaller direction indicators on dense grids */
+.grid-5x5 .direction-indicator,
+.grid-6x6 .direction-indicator {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+}
+
+/* Modal direction indicator - larger */
+.modal-content .direction-indicator {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+    top: 4px;
+    right: 4px;
+}
+
 /* Loading State */
 .loading {
     display: flex;
@@ -1344,6 +1409,53 @@ footer {
 .bulk-action-btn:hover {
     background: #444;
     border-color: #555;
+}
+
+/* Direction Actions (Bulk) */
+.direction-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid #444;
+}
+
+.direction-label {
+    font-size: 12px;
+    color: #888;
+    margin-right: 4px;
+}
+
+.direction-btn {
+    padding: 6px 12px;
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #eee;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.direction-btn:hover {
+    background: #444;
+    border-color: #555;
+}
+
+.direction-btn.front:hover {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #4CAF50;
+    color: #4CAF50;
+}
+
+.direction-btn.back:hover {
+    background: rgba(255, 152, 0, 0.2);
+    border-color: #FF9800;
+    color: #FF9800;
 }
 
 /* ============================================
