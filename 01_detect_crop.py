@@ -108,6 +108,17 @@ def crop_and_save(
     # Skip if bbox has zero or negative area
     if x2 <= x1 or y2 <= y1:
         logger.warning(f"Invalid bbox for {crop_id}: [{x1}, {y1}, {x2}, {y2}]")
+        # Copy image and label to errors directory
+        import shutil
+        errors_dir = crops_dir.parent / "errors"
+        errors_dir.mkdir(parents=True, exist_ok=True)
+        error_filename = f"{image_path.stem}_bbox{crop_id.split('_')[-1]}.jpg"
+        shutil.copy2(image_path, errors_dir / error_filename)
+        # Copy JSON label if exists
+        json_path = image_path.with_suffix('.json')
+        if json_path.exists():
+            shutil.copy2(json_path, errors_dir / json_path.name)
+        logger.info(f"Copied problematic image and label to: {errors_dir / error_filename}")
         return None
 
     crops_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +132,27 @@ def crop_and_save(
     x2 = min(width, x2)
     y2 = min(height, y2)
 
+    # Validate crop size after clamping
+    if x2 <= x1 or y2 <= y1:
+        logger.warning(f"Crop has zero size after clamping for {crop_id}: [{x1}, {y1}, {x2}, {y2}] in image {width}x{height}")
+        # Copy image and label to errors directory
+        import shutil
+        errors_dir = crops_dir.parent / "errors"
+        errors_dir.mkdir(parents=True, exist_ok=True)
+        error_filename = f"{image_path.stem}_bbox{crop_id.split('_')[-1]}_clamped.jpg"
+        shutil.copy2(image_path, errors_dir / error_filename)
+        # Copy JSON label if exists
+        json_path = image_path.with_suffix('.json')
+        if json_path.exists():
+            shutil.copy2(json_path, errors_dir / json_path.name)
+        logger.info(f"Copied problematic image and label to: {errors_dir / error_filename}")
+        return None
+
     crop = img.crop((x1, y1, x2, y2))
+
+    # Convert to RGB if needed (JPEG doesn't support RGBA, P, LA, etc.)
+    if crop.mode not in ("RGB", "L"):
+        crop = crop.convert("RGB")
 
     crop_filename = f"{crop_id}.jpg"
     crop_path = crops_dir / crop_filename
@@ -419,6 +450,7 @@ def main() -> int:
         step.detector_cfg = {
             "annotations_file": args.annotations or detector_cfg.get("annotations_file"),
             "annotations_dir": detector_cfg.get("annotations_dir"),
+            "bbox_format": detector_cfg.get("bbox_format", "xyxy"),
         }
     else:
         step.detector_cfg = {}

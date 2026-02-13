@@ -1,0 +1,19 @@
+{
+  "blue": 951,
+  "white": 19821,
+  "silver": 13391,
+  "green": 229,
+  "black": 5631,
+  "red": 2979,
+  "gray": 3932,
+  "motorcycle": 58,
+  "car": 407,
+  "yellow": 179,
+  "brown": 295,
+  "truck": 233,
+  "bus": 11,
+  "unknown": 594,
+  "tow": 16,
+  "pickup": 4,
+  "suv": 2
+}

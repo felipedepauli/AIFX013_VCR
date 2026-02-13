@@ -59,22 +59,27 @@ class VCRStrategy(BaseTrainingStrategy):
 
     def configure_loss(self) -> nn.Module:
         """Configure loss function."""
-        # Loss params are in "loss" section usually, but code previously looked in train
-        # Config has "loss" section with "smooth_modulation" etc.
-        # But Strategy looked in "train".
-        # config.yaml has:
-        # loss:
-        #   name: "smooth_modulation"
+        # Loss params are in "loss" section
         loss_section = self.config.get("loss", {})
         train_section = self.config.get("training", {})
         
         loss_fn = loss_section.get("name", "smooth_modulation")
+        
+        # Build loss config with all necessary parameters
         loss_cfg = {
             "max_epoch": int(train_section.get("epochs", 50)),
-            # alpha might be in loss section? config.yaml has smooth_modulation: tau: 1.0. No alpha?
-            # Code had alpha: 0.1 default.
-            "alpha": 0.1, 
         }
+        
+        # Add loss-specific parameters
+        if loss_fn == "smooth_modulation":
+            loss_cfg["tau"] = loss_section.get("tau", 0.5)
+            loss_cfg["modulation_type"] = loss_section.get("modulation_type", "cosine")
+            loss_cfg["reduction"] = loss_section.get("reduction", "mean")
+        elif loss_fn == "focal":
+            loss_cfg["gamma"] = loss_section.get("gamma", 2.0)
+            loss_cfg["alpha"] = loss_section.get("alpha", 0.25)
+            loss_cfg["reduction"] = loss_section.get("reduction", "mean")
+            
         return LossFactory.create(loss_fn, loss_cfg)
 
     def configure_optimizers(self, model: nn.Module) -> tuple[torch.optim.Optimizer, Any]:

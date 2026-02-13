@@ -3,7 +3,7 @@
 study:
   name: "VCR-Mobile-Optimization" # New study for mobile backbones
   direction: "maximize" # maximize val_acc
-  n_trials: 100
+  n_trials: 600
   timeout: null # seconds, null = unlimited
 
   # Optuna sampler configuration

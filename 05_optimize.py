@@ -40,25 +40,41 @@ def train_wrapper(**kwargs: Any) -> dict[str, Any]:
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
+    # Get loss function name to conditionally add loss-specific params
+    loss_fn = kwargs.get("loss_fn", "smooth_modulation")
+    
+    # Build loss configuration based on loss function
+    loss_config = {"name": loss_fn}
+    
+    if loss_fn == "smooth_modulation":
+        loss_config["tau"] = kwargs.get("tau", 0.5)
+        loss_config["modulation_type"] = kwargs.get("modulation_type", "cosine")
+    elif loss_fn == "focal":
+        loss_config["gamma"] = kwargs.get("focal_gamma", 2.0)
+        loss_config["alpha"] = kwargs.get("focal_alpha", 0.25)
+    
     # Whatever remains is treated as hyperparameters for the config
     # We construct a synthetic config dict
     config = {
+        "model": {
+            "backbone": kwargs.get("backbone", "colornet_v1"),
+            "fusion": kwargs.get("fusion", "msff"),
+            "dropout": kwargs.get("dropout", 0.2),
+        },
         "training": {
             # Strategy params
             "strategy": kwargs.get("strategy", "vcr"),
-            "backbone": kwargs.get("backbone", "resnet50"),
-            "fusion": kwargs.get("fusion", "msff"),
-            "loss": kwargs.get("loss_fn", "smooth_modulation"),
             
             # Training params
-            "epochs": kwargs.get("epochs", 20),
+            "epochs": kwargs.get("epochs", 200),
             "batch_size": kwargs.get("batch_size", 32),
-            "image_size": kwargs.get("image_size", 224),
+            "input_size": kwargs.get("image_size", 224),
             "lr": kwargs.get("lr", 1e-4),
             "weight_decay": kwargs.get("weight_decay", 1e-4),
             "device": kwargs.get("device", "auto"),
             "use_weighted_sampler": kwargs.get("use_weighted_sampler", True),
-        }
+        },
+        "loss": loss_config,
     }
     
     return train_fn(

@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Review Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <!-- Startup Modal (visible on load) -->
+    <div id="startup-modal" class="modal">
+        <div class="modal-content startup-modal">
+            <h1>🖼️ Image Review Tool</h1>
+            <h2>Project Setup</h2>
+            
+            <!-- Create New Project Section -->
+            <div class="section">
+                <h3>Create New Project</h3>
+                <div class="form-group">
+                    <label>Project Name:</label>
+                    <input type="text" id="project-name" placeholder="my_project" 
+                           pattern="[a-zA-Z0-9_]+" title="Only letters, numbers, and underscores">
+                </div>
+                <div class="form-group">
+                    <label>Image Directory:</label>
+                    <div class="input-with-button">
+                        <input type="text" id="directory-path" readonly placeholder="Click Browse to select...">
+                        <button onclick="openBrowser()">Browse...</button>
+                    </div>
+                    <div id="directory-info" class="info-text"></div>
+                </div>
+                <div class="form-group">
+                    <label>Default Quality Flag:</label>
+                    <div class="radio-group" id="default-quality-flags">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Default Perspective Flag:</label>
+                    <div class="radio-group" id="default-perspective-flags">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Visible Labels:</label>
+                    <div class="checkbox-group" id="visible-labels">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+                <button class="primary" onclick="createProject()">Create Project</button>
+            </div>
+            
+            <div class="divider">OR</div>
+            
+            <!-- Open Recent Section -->
+            <div class="section">
+                <h3>Open Recent Project</h3>
+                <select id="recent-projects">
+                    <option value="">Select a project...</option>
+                </select>
+                <div id="recent-project-info" class="info-text"></div>
+                <button onclick="openProject()">Open Project</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Directory Browser Modal -->
+    <div id="browser-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeBrowser()"></div>
+        <div class="modal-content browser-modal">
+            <div class="browser-header">
+                <h3>📁 Select Directory</h3>
+                <button class="close-btn" onclick="closeBrowser()">✕</button>
+            </div>
+            <div class="browser-path">
+                <button onclick="goToParent()" id="parent-btn">⬆️ Parent</button>
+                <input type="text" id="current-path" readonly>
+            </div>
+            <div class="browser-info" id="browser-info"></div>
+            <div class="browser-list" id="browser-list">
+                <!-- Populated by JS -->
+            </div>
+            <div class="browser-actions">
+                <button onclick="closeBrowser()">Cancel</button>
+                <button class="primary" onclick="selectCurrentDirectory()" id="select-dir-btn">
+                    Select This Directory
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Application (hidden until project loaded) -->
+    <div id="main-app" class="hidden">
+        <!-- Header -->
+        <header>
+            <div class="header-left">
+                <h1>🖼️ Image Review Tool</h1>
+                <span class="project-name" id="project-title"></span>
+            </div>
+            <div class="toolbar">
+                <div class="label-dropdown">
+                    <button class="dropdown-toggle" onclick="toggleLabelDropdown()">
+                        Labels: <span id="label-count">4 shown</span> ▼
+                    </button>
+                    <div class="dropdown-menu hidden" id="label-menu">
+                        <label>
+                            <input type="checkbox" name="vis-label" value="color" checked 
+                                   onchange="toggleLabel('color', this.checked)">
+                            color
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="brand" checked
+                                   onchange="toggleLabel('brand', this.checked)">
+                            brand
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="model" checked
+                                   onchange="toggleLabel('model', this.checked)">
+                            model
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="label"
+                                   onchange="toggleLabel('label', this.checked)">
+                            label
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="type" checked
+                                   onchange="toggleLabel('type', this.checked)">
+                            type
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="sub_type"
+                                   onchange="toggleLabel('sub_type', this.checked)">
+                            sub_type
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="lp_coords"
+                                   onchange="toggleLabel('lp_coords', this.checked)">
+                            lp_coords
+                        </label>
+                        <div class="dropdown-actions">
+                            <button onclick="selectAllLabels()">Select All</button>
+                            <button onclick="clearAllLabels()">Clear All</button>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <label class="bbox-toggle">
+                            <input type="checkbox" id="show-bbox" checked 
+                                   onchange="toggleBoundingBoxes(this.checked)">
+                            Show Bounding Boxes
+                        </label>
+                    </div>
+                </div>
+                <div class="grid-selector">
+                    <button data-size="4" onclick="setGridSize(4)">2×2</button>
+                    <button data-size="9" class="active" onclick="setGridSize(9)">3×3</button>
+                    <button data-size="25" onclick="setGridSize(25)">5×5</button>
+                    <button data-size="36" onclick="setGridSize(36)">6×6</button>
+                    <button class="custom-grid-btn" id="custom-grid-btn" onclick="openCustomGridModal()" title="Custom Grid Size">⚙</button>
+                </div>
+                <div class="bulk-actions">
+                    <button class="bulk-action-btn" onclick="selectAllOnPage()" title="Select all images on this page (A)">
+                        ☑ Select Page
+                    </button>
+                    <button class="bulk-action-btn" onclick="deselectAllOnPage()" title="Deselect all images on this page (D)">
+                        ☐ Deselect Page
+                    </button>
+                </div>
+                <div class="toolbar-actions">
+                    <button class="filter-toggle-header" onclick="toggleFilterPanel()" title="Toggle Filters ([)" aria-label="Toggle filter panel">
+                        <span id="filter-toggle-icon">◀</span> Filters
+                    </button>
+                    <button class="help-btn" onclick="openShortcutsHelp()" title="Keyboard Shortcuts (?)" aria-label="Show keyboard shortcuts">?</button>
+                    <button class="settings-btn" onclick="openSettings()" title="Settings (,)" aria-label="Open settings">⚙️</button>
+                </div>
+            </div>
+        </header>
+        
+        <!-- Active Filters Bar -->
+        <div class="active-filters-bar hidden" id="active-filters-bar">
+            <div class="active-filters-list" id="active-filters-list">
+                <!-- Filter chips injected here -->
+            </div>
+            <button class="btn-clear-all" onclick="clearAllFilters()" id="clear-all-btn">
+                Clear All
+            </button>
+            <span class="filter-summary" id="filter-summary"></span>
+        </div>
+        
+        <!-- Filter Panel (Left Sidebar) -->
+        <aside id="filter-panel" class="filter-panel">
+            <div class="filter-panel-header">
+                <button class="filter-collapse-btn" onclick="toggleFilterPanel()" title="Collapse Filters">
+                    <span class="toggle-icon" id="panel-toggle-icon">◀</span>
+                </button>
+                <span class="filter-title">FILTERS</span>
+                <span class="filter-count" id="filter-match-count">0 images</span>
+            </div>
+            
+            <div class="filter-panel-content">
+                <!-- Search Box -->
+                <div class="filter-search">
+                    <input type="text" id="filter-search-input" placeholder="🔍 Search filters..." 
+                           oninput="filterSearchOptions(this.value)" autocomplete="off">
+                </div>
+                
+                <!-- Filter Sections Container -->
+                <div class="filter-sections" id="filter-sections">
+                    <!-- Populated by JavaScript -->
+                </div>
+                
+                <!-- Footer -->
+                <div class="filter-panel-footer">
+                    <button class="btn-clear-filters" onclick="clearAllFilters()" id="clear-filters-btn" disabled>
+                        Clear All Filters
+                    </button>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Content Area -->
+        <div class="main-content" id="main-content">
+            <!-- Image Grid -->
+            <main id="image-grid" class="grid grid-3x3">
+                <!-- Images populated by JavaScript -->
+            </main>
+        </div>
+        
+        <!-- Footer -->
+        <footer>
+            <div class="pagination">
+                <button onclick="previousPage()" id="btn-prev" disabled>← Prev</button>
+                <span id="page-info">Page <span id="current-page">1</span> of <span id="total-pages">1</span></span>
+                <button onclick="nextPage()" id="btn-next" disabled>Next →</button>
+            </div>
+            <span class="separator">|</span>
+            <div class="stats">
+                <span>Total: <span id="total-images">0</span></span>
+                <span class="separator">|</span>
+                <span>Selected: <span id="selected-count">0</span></span>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications-container"></div>
+    
+    <!-- Full-size Image Modal -->
+    <div id="image-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeImageModal()"></div>
+        <div class="modal-content image-modal-content">
+            <button class="modal-close" onclick="closeImageModal()">✕</button>
+            <div class="modal-nav">
+                <button class="nav-btn" onclick="modalPrevImage()" id="modal-prev-btn">◀</button>
+                <button class="nav-btn" onclick="modalNextImage()" id="modal-next-btn">▶</button>
+            </div>
+            <div class="modal-main">
+                <div class="modal-image-container">
+                    <img id="modal-image" src="" alt="">
+                    <div id="modal-labels" class="label-overlay modal-label-overlay">
+                        <!-- Labels rendered here -->
+                    </div>
+                </div>
+                <div class="modal-edit-panel" id="modal-edit-panel">
+                    <div class="edit-panel-header">
+                        <h3>🏷️ Edit Labels</h3>
+                        <button class="edit-panel-toggle" onclick="toggleEditPanel()" title="Toggle Edit Panel">◀</button>
+                    </div>
+                    <div class="edit-panel-content" id="edit-panel-content">
+                        <div class="object-selector" id="object-selector">
+                            <!-- Object buttons rendered here -->
+                        </div>
+                        <div class="label-editors" id="label-editors">
+                            <!-- Label input fields rendered here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-info">
+                <span id="modal-filename"></span>
+                <span id="modal-seq-id"></span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeDeleteModal()"></div>
+        <div class="modal-content delete-modal-content">
+            <h2>⚠️ <span id="delete-modal-title">Confirm Delete</span></h2>
+            
+            <p id="delete-modal-message">Are you sure you want to delete this image?</p>
+            
+            <div id="delete-file-list" class="file-list">
+                <!-- Files listed here -->
+            </div>
+            
+            <p class="warning-text">⚠️ This action cannot be undone. Files will be permanently deleted.</p>
+            
+            <label class="dont-ask-checkbox">
+                <input type="checkbox" id="delete-dont-ask" 
+                       onchange="toggleSkipDeleteConfirmation(this.checked)">
+                Don't ask again for this session
+            </label>
+            
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn-delete" id="confirm-delete-btn" onclick="confirmDelete()">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Flag Modal -->
+    <div id="flag-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeFlagModal()"></div>
+        <div class="modal-content flag-modal-content">
+            <h2>🏷️ <span id="flag-modal-title">Set Flags</span></h2>
+            <p id="flag-modal-subtitle" class="subtitle">Image: filename.jpg</p>
+            
+            <!-- Quality Flags Section -->
+            <div class="flag-section">
+                <h3>Quality Flags</h3>
+                
+                <!-- Bulk mode selector (hidden for single) -->
+                <div class="bulk-mode-selector hidden" id="quality-bulk-mode">
+                    <label><input type="radio" name="quality-mode" value="set" checked> Set</label>
+                    <label><input type="radio" name="quality-mode" value="add"> Add</label>
+                    <label><input type="radio" name="quality-mode" value="remove"> Remove</label>
+                </div>
+                
+                <div class="flag-grid" id="quality-flags-grid">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+            
+            <!-- Perspective Flags Section -->
+            <div class="flag-section">
+                <h3>Perspective Flags</h3>
+                
+                <!-- Bulk mode selector (hidden for single) -->
+                <div class="bulk-mode-selector hidden" id="perspective-bulk-mode">
+                    <label><input type="radio" name="perspective-mode" value="set" checked> Set</label>
+                    <label><input type="radio" name="perspective-mode" value="add"> Add</label>
+                    <label><input type="radio" name="perspective-mode" value="remove"> Remove</label>
+                </div>
+                
+                <div class="flag-grid" id="perspective-flags-grid">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeFlagModal()">Cancel</button>
+                <button class="btn-apply" id="apply-flags-btn" onclick="applyFlags()">Apply</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeSettings()"></div>
+        <div class="modal-content settings-modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Settings</h2>
+                <button class="modal-close" onclick="closeSettings()">✕</button>
+            </div>
+            
+            <!-- Project Info Section -->
+            <div class="settings-section">
+                <h3>Project Info</h3>
+                <div class="project-info">
+                    <div class="info-row">
+                        <span class="info-label">Name:</span>
+                        <span id="settings-project-name">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Directory:</span>
+                        <span id="settings-project-dir" class="dir-path">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Images:</span>
+                        <span id="settings-image-count">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Created:</span>
+                        <span id="settings-created-date">-</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- General Section -->
+            <div class="settings-section">
+                <h3>General</h3>
+                <label class="setting-checkbox">
+                    <input type="checkbox" id="setting-skip-confirm" 
+                           onchange="updateSetting('skip_delete_confirmation', this.checked)">
+                    <span>Skip delete confirmation</span>
+                </label>
+                
+                <div class="setting-group">
+                    <label class="setting-label">Default Grid Size:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="setting-grid-size" value="4" 
+                                      onchange="updateSetting('grid_size', 4)"> 2×2</label>
+                        <label><input type="radio" name="setting-grid-size" value="9" 
+                                      onchange="updateSetting('grid_size', 9)"> 3×3</label>
+                        <label><input type="radio" name="setting-grid-size" value="25" 
+                                      onchange="updateSetting('grid_size', 25)"> 5×5</label>
+                        <label><input type="radio" name="setting-grid-size" value="36" 
+                                      onchange="updateSetting('grid_size', 36)"> 6×6</label>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Visible Labels Section -->
+            <div class="settings-section">
+                <h3>Visible Labels</h3>
+                <div class="checkbox-grid" id="visible-labels-settings">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+            
+            <!-- Quality Flags Section -->
+            <div class="settings-section">
+                <h3>Quality Flags</h3>
+                <div class="flag-manager">
+                    <div class="flag-tags" id="quality-flags-tags">
+                        <!-- Generated by JS -->
+                    </div>
+                    <div class="add-flag-row">
+                        <input type="text" id="new-quality-flag" placeholder="New flag name">
+                        <button onclick="addQualityFlag()">+ Add</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label class="setting-label">Default for new images:</label>
+                    <select id="default-quality-flag" onchange="onDefaultFlagChange('quality', this.value)">
+                        <option value="">None</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Perspective Flags Section -->
+            <div class="settings-section">
+                <h3>Perspective Flags</h3>
+                <div class="flag-manager">
+                    <div class="flag-tags" id="perspective-flags-tags">
+                        <!-- Generated by JS -->
+                    </div>
+                    <div class="add-flag-row">
+                        <input type="text" id="new-perspective-flag" placeholder="New flag name">
+                        <button onclick="addPerspectiveFlag()">+ Add</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label class="setting-label">Default for new images:</label>
+                    <select id="default-perspective-flag" onchange="onDefaultFlagChange('perspective', this.value)">
+                        <option value="">None</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-primary" onclick="closeSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Shortcuts Help Modal -->
+    <div id="shortcuts-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeShortcutsHelp()"></div>
+        <div class="modal-content shortcuts-modal-content">
+            <h2>⌨️ Keyboard Shortcuts</h2>
+            
+            <div class="shortcuts-section">
+                <h3>Navigation</h3>
+                <div class="shortcut-row"><kbd>W</kbd><span>Previous page</span></div>
+                <div class="shortcut-row"><kbd>E</kbd><span>Next page</span></div>
+                <div class="shortcut-row"><kbd>1-4</kbd><span>Change grid size</span></div>
+                <div class="shortcut-row"><kbd>G</kbd><span>Custom grid size</span></div>
+            </div>
+            
+            <div class="shortcuts-section">
+                <h3>Selection</h3>
+                <div class="shortcut-row"><kbd>A</kbd><span>Select all on page</span></div>
+                <div class="shortcut-row"><kbd>D</kbd><span>Deselect all</span></div>
+                <div class="shortcut-row"><kbd>Space</kbd><span>Open hovered image</span></div>
+            </div>
+            
+            <div class="shortcuts-section">
+                <h3>Actions</h3>
+                <div class="shortcut-row"><kbd>R</kbd><span>Delete hovered/selected</span></div>
+                <div class="shortcut-row"><kbd>F</kbd><span>Flag selected/hovered</span></div>
+                <div class="shortcut-row"><kbd>Q</kbd><span>Cycle quality flag (hover/selected)</span></div>
+                <div class="shortcut-row"><kbd>P</kbd><span>Perspective flags</span></div>
+            </div>
+            
+            <div class="shortcuts-section">
+                <h3>General</h3>
+                <div class="shortcut-row"><kbd>\</kbd><span>Toggle filter panel</span></div>
+                <div class="shortcut-row"><kbd>,</kbd><span>Open settings</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Close modal / Deselect</span></div>
+            </div>
+            
+            <button class="btn-primary" onclick="closeShortcutsHelp()">Got it</button>
+        </div>
+    </div>
+    
+    <!-- Custom Grid Modal -->
+    <div id="custom-grid-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeCustomGridModal()"></div>
+        <div class="modal-content custom-grid-modal-content">
+            <h2>📷 Custom Grid Size</h2>
+            <p class="modal-description">Set a custom number of columns and rows for the image grid.</p>
+            
+            <div class="custom-grid-inputs">
+                <div class="input-group">
+                    <label for="custom-cols">Columns</label>
+                    <input type="number" id="custom-cols" min="1" max="10" value="4" 
+                           onkeydown="if(event.key==='Enter') applyCustomGrid()">
+                </div>
+                <span class="input-separator">×</span>
+                <div class="input-group">
+                    <label for="custom-rows">Rows</label>
+                    <input type="number" id="custom-rows" min="1" max="10" value="4"
+                           onkeydown="if(event.key==='Enter') applyCustomGrid()">
+                </div>
+            </div>
+            
+            <div class="custom-grid-preview">
+                <span class="preview-label">Total images per page:</span>
+                <span class="preview-value" id="custom-grid-total">16</span>
+            </div>
+            
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeCustomGridModal()">Cancel</button>
+                <button class="btn-primary" onclick="applyCustomGrid()">Apply</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

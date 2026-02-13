@@ -1,20 +1,17 @@
-# VCR Pipeline Configuration
+# VCR Pipeline Configuration - Optimized
 
 # Paths
 paths:
-  raw_dir: "data/raw"
+  raw_dir: "images/xywh/revised_images"
   crops_dir: "data/crops"
   manifests_dir: "data/manifests"
   runs_dir: "runs"
 
 # Detection
 detector:
-  name: "yolo" # "yolo" or "manual"
+  name: "manual"
+  bbox_format: "xywh"
   save_crops: true
-  yolo:
-    model: "yolo11x.pt"
-    conf_threshold: 0.5
-    classes: [2, 5, 7] # car, bus, truck
 
 # Preprocessing
 preprocess:
@@ -22,33 +19,32 @@ preprocess:
     train: 0.7
     val: 0.15
     test: 0.15
-  group_by: "camera_id" # null, "camera_id", or "track_id"
+  group_by: "camera_id"
   seed: 42
 
-# Model
+# Model - Optimized configuration
 model:
   backbone: "colornet_v1"
-  fusion: "global_concat"
+  fusion: "msff"
   num_classes: 24
-  pretrained: false # IMPORTANTE: ColorNet é treinada do zero (Scratch)
+  pretrained: false
 
-# Training
+# Training - Best hyperparameters from optimization
 training:
   seed: 42
-  epochs: 3 # Aumentado para permitir convergência do zero
-  batch_size: 32 # Ok, ajuste se sobrar/faltar VRAM
-  lr: 0.001 # Taxa inicial boa para Scratch
-  weight_decay: 0.01 # Ajustado para AdamW (geralmente pede decay maior que Adam)
-  input_size: 224
+  strategy: "vcr"
+  epochs: 100
+  batch_size: 32
+  lr: 0.0008190562407991639
+  weight_decay: 0.00019846273190684668
+  input_size: 256
   num_workers: 4
-  early_stopping_patience: 15 # Vai parar o treino se não melhorar em 15 épocas
+  early_stopping_patience: 20
+  use_weighted_sampler: true
 
 # Loss
 loss:
-  name: "smooth_modulation" # "smooth_modulation" or "focal"
-  focal:
-    gamma: 2.0
-    alpha: null # null = balanced
+  name: "smooth_modulation"
   smooth_modulation:
     tau: 1.0
 

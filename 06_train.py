@@ -17,6 +17,19 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    confusion_matrix, 
+    classification_report, 
+    roc_curve, 
+    auc,
+    precision_recall_curve,
+    average_precision_score
+)
+from sklearn.preprocessing import label_binarize
+import json
 
 # Import modules to trigger registrations
 import src.backbones  # noqa: F401
@@ -52,6 +65,10 @@ def train(
     
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create artifacts directory
+    artifacts_dir = output_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
 
     # Device
     if device == "auto":
@@ -143,6 +160,20 @@ def train(
 
         best_val_acc = 0.0
         best_epoch = 0
+        
+        # History tracking for plots
+        history = {
+            "train_loss": [],
+            "train_acc": [],
+            "val_loss": [],
+            "val_acc": [],
+            "lr": []
+        }
+        
+        # Initialize for final visualization (will be updated each epoch)
+        all_preds = []
+        all_labels = []
+        all_probs = []
 
         for epoch in range(start_epoch, epochs):
             # --- Training Loop ---
@@ -182,6 +213,11 @@ def train(
             val_acc = 0.0
             num_val_batches = 0
             
+            # Reset predictions for this epoch (keep last epoch for visualization)
+            all_preds.clear()
+            all_labels.clear()
+            all_probs.clear()
+            
             with torch.no_grad():
                 val_pbar = tqdm(val_loader, desc=f"Epoch {epoch+1}/{epochs} [Val]", leave=False)
                 for batch in val_pbar:
@@ -189,6 +225,18 @@ def train(
                     val_loss += metrics["loss"]
                     val_acc += metrics.get("accuracy", 0.0)
                     num_val_batches += 1
+                    
+                    # Store predictions for visualization
+                    images, labels = batch
+                    images = images.to(device)
+                    labels = labels.to(device)
+                    outputs = model(images)
+                    probs = torch.softmax(outputs, dim=1)
+                    _, preds = torch.max(outputs, 1)
+                    
+                    all_preds.extend(preds.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+                    all_probs.extend(probs.cpu().numpy())
             
             val_loss /= num_val_batches
             val_acc /= num_val_batches
@@ -207,6 +255,13 @@ def train(
                     import optuna
                     raise optuna.TrialPruned()
 
+            # Update history
+            history["train_loss"].append(train_loss)
+            history["train_acc"].append(train_acc)
+            history["val_loss"].append(val_loss)
+            history["val_acc"].append(val_acc)
+            history["lr"].append(current_lr)
+            
             mlflow.log_metrics({
                 "train_loss": train_loss, "train_acc": train_acc,
                 "val_loss": val_loss, "val_acc": val_acc,
@@ -249,6 +304,308 @@ def train(
             if early_stopping.early_stop:
                 logger.info(f"Early stopping triggered at epoch {epoch+1}")
                 break
+        
+        # ============ Generate Visualizations ============
+        logger.info("Generating visualization artifacts...")
+        
+        # If no epochs were run (e.g., resumed from completed training), run validation to collect predictions
+        if len(all_preds) == 0:
+            logger.info("No validation data collected during training. Running final validation pass...")
+            # Load best model checkpoint for evaluation
+            best_checkpoint = output_dir / "best.pt"
+            if best_checkpoint.exists():
+                logger.info(f"Loading best model from {best_checkpoint}")
+                checkpoint = torch.load(best_checkpoint, map_location=device)
+                model.load_state_dict(checkpoint["model_state_dict"])
+            
+            # Create a simple dataloader without multiprocessing to avoid issues
+            final_val_loader = DataLoader(
+                val_dataset, batch_size=batch_size, shuffle=False, 
+                num_workers=0, pin_memory=False
+            )
+            
+            model.eval()
+            with torch.no_grad():
+                val_pbar = tqdm(final_val_loader, desc="Final Validation", leave=False)
+                for batch in val_pbar:
+                    images, labels = batch
+                    images = images.to(device)
+                    labels = labels.to(device)
+                    outputs = model(images)
+                    probs = torch.softmax(outputs, dim=1)
+                    _, preds = torch.max(outputs, 1)
+                    
+                    all_preds.extend(preds.cpu().numpy())
+                    all_labels.extend(labels.cpu().numpy())
+                    all_probs.extend(probs.cpu().numpy())
+            logger.info(f"Collected {len(all_preds)} validation predictions")
+        
+        # Convert to numpy arrays
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        all_probs = np.array(all_probs)
+        
+        # Get class names - try to load from class_to_idx.json
+        class_to_idx_path = Path("data/processed/class_to_idx.json")
+        idx_to_class = {}
+        if class_to_idx_path.exists():
+            with open(class_to_idx_path, 'r') as f:
+                class_to_idx = json.load(f)
+                idx_to_class = {v: k for k, v in class_to_idx.items()}
+        
+        # Use only classes that appear in the data
+        unique_labels = np.unique(np.concatenate([all_labels, all_preds]))
+        class_names = [idx_to_class.get(i, f"Class_{i}") for i in unique_labels]
+        actual_num_classes = len(unique_labels)
+        
+        # 1. Confusion Matrix
+        cm = confusion_matrix(all_labels, all_preds, labels=unique_labels)
+        plt.figure(figsize=(14, 12))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
+                   xticklabels=class_names, yticklabels=class_names)
+        plt.title(f'Confusion Matrix - Best Epoch {best_epoch+1}', fontsize=14, pad=20)
+        plt.ylabel('True Label', fontsize=12)
+        plt.xlabel('Predicted Label', fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+        cm_path = artifacts_dir / "confusion_matrix.png"
+        plt.savefig(cm_path, dpi=300, bbox_inches='tight')
+        mlflow.log_artifact(str(cm_path))
+        plt.close()
+        
+        # 2. Normalized Confusion Matrix
+        row_sums = cm.sum(axis=1, keepdims=True)
+        row_sums[row_sums == 0] = 1  # Avoid division by zero
+        cm_norm = cm.astype('float') / row_sums
+        plt.figure(figsize=(14, 12))
+        sns.heatmap(cm_norm, annot=True, fmt='.2f', cmap='Blues',
+                   xticklabels=class_names, yticklabels=class_names)
+        plt.title(f'Normalized Confusion Matrix - Best Epoch {best_epoch+1}', fontsize=14, pad=20)
+        plt.ylabel('True Label', fontsize=12)
+        plt.xlabel('Predicted Label', fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+        plt.tight_layout()
+        cm_norm_path = artifacts_dir / "confusion_matrix_normalized.png"
+        plt.savefig(cm_norm_path, dpi=300, bbox_inches='tight')
+        mlflow.log_artifact(str(cm_norm_path))
+        plt.close()
+        
+        # 3. Training History - Loss and Accuracy (only if we have history)
+        if len(history["train_loss"]) > 0:
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+            
+            epochs_range = range(1, len(history["train_loss"]) + 1)
+            
+            # Loss plot
+            ax1.plot(epochs_range, history["train_loss"], 'b-', label='Train Loss', linewidth=2)
+            ax1.plot(epochs_range, history["val_loss"], 'r-', label='Val Loss', linewidth=2)
+            ax1.axvline(x=best_epoch+1, color='g', linestyle='--', label=f'Best Epoch ({best_epoch+1})')
+            ax1.set_xlabel('Epoch', fontsize=12)
+            ax1.set_ylabel('Loss', fontsize=12)
+            ax1.set_title('Training and Validation Loss', fontsize=14)
+            ax1.legend(fontsize=10)
+            ax1.grid(True, alpha=0.3)
+            
+            # Accuracy plot
+            ax2.plot(epochs_range, history["train_acc"], 'b-', label='Train Accuracy', linewidth=2)
+            ax2.plot(epochs_range, history["val_acc"], 'r-', label='Val Accuracy', linewidth=2)
+            ax2.axvline(x=best_epoch+1, color='g', linestyle='--', label=f'Best Epoch ({best_epoch+1})')
+            ax2.set_xlabel('Epoch', fontsize=12)
+            ax2.set_ylabel('Accuracy', fontsize=12)
+            ax2.set_title('Training and Validation Accuracy', fontsize=14)
+            ax2.legend(fontsize=10)
+            ax2.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            history_path = artifacts_dir / "training_history.png"
+            plt.savefig(history_path, dpi=300, bbox_inches='tight')
+            mlflow.log_artifact(str(history_path))
+            plt.close()
+        else:
+            logger.info("No training history available, skipping history plots")
+        
+        # 4. Learning Rate Schedule (only if we have history)
+        if len(history["lr"]) > 0:
+            epochs_range_lr = range(1, len(history["lr"]) + 1)
+            plt.figure(figsize=(10, 6))
+            plt.plot(epochs_range_lr, history["lr"], 'b-', linewidth=2)
+            plt.xlabel('Epoch', fontsize=12)
+            plt.ylabel('Learning Rate', fontsize=12)
+            plt.title('Learning Rate Schedule', fontsize=14)
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            lr_path = artifacts_dir / "learning_rate.png"
+            plt.savefig(lr_path, dpi=300, bbox_inches='tight')
+            mlflow.log_artifact(str(lr_path))
+            plt.close()
+        
+        # 5. ROC Curves (One-vs-Rest)
+        y_bin = label_binarize(all_labels, classes=unique_labels)
+        
+        # Expand probs to match all possible classes
+        all_probs_expanded = np.zeros((len(all_labels), len(unique_labels)))
+        for i, label in enumerate(unique_labels):
+            if label < all_probs.shape[1]:
+                all_probs_expanded[:, i] = all_probs[:, label]
+        
+        plt.figure(figsize=(12, 10))
+        colors = plt.cm.rainbow(np.linspace(0, 1, actual_num_classes))
+        
+        for i, (label_idx, color) in enumerate(zip(unique_labels, colors)):
+            if np.sum(y_bin[:, i]) > 0:  # Only plot if class has samples
+                fpr, tpr, _ = roc_curve(y_bin[:, i], all_probs_expanded[:, i])
+                roc_auc = auc(fpr, tpr)
+                plt.plot(fpr, tpr, color=color, lw=2,
+                        label=f'{class_names[i]} (AUC = {roc_auc:.3f})')
+        
+        plt.plot([0, 1], [0, 1], 'k--', lw=2, label='Random Classifier')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate', fontsize=12)
+        plt.ylabel('True Positive Rate', fontsize=12)
+        plt.title('ROC Curves - One-vs-Rest', fontsize=14)
+        plt.legend(loc='lower right', fontsize=8, ncol=2)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        roc_path = artifacts_dir / "roc_curves.png"
+        plt.savefig(roc_path, dpi=300, bbox_inches='tight')
+        mlflow.log_artifact(str(roc_path))
+        plt.close()
+        
+        # 6. Precision-Recall Curves
+        plt.figure(figsize=(12, 10))
+        colors_pr = plt.cm.rainbow(np.linspace(0, 1, actual_num_classes))
+        
+        for i, (label_idx, color) in enumerate(zip(unique_labels, colors_pr)):
+            if np.sum(y_bin[:, i]) > 0:  # Only plot if class has samples
+                precision, recall, _ = precision_recall_curve(y_bin[:, i], all_probs_expanded[:, i])
+                avg_precision = average_precision_score(y_bin[:, i], all_probs_expanded[:, i])
+                plt.plot(recall, precision, color=color, lw=2,
+                        label=f'{class_names[i]} (AP = {avg_precision:.3f})')
+        
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('Recall', fontsize=12)
+        plt.ylabel('Precision', fontsize=12)
+        plt.title('Precision-Recall Curves', fontsize=14)
+        plt.legend(loc='lower left', fontsize=8, ncol=2)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        pr_path = artifacts_dir / "precision_recall_curves.png"
+        plt.savefig(pr_path, dpi=300, bbox_inches='tight')
+        mlflow.log_artifact(str(pr_path))
+        plt.close()
+        
+        # 7. Per-Class Metrics
+        report = classification_report(all_labels, all_preds, 
+                                      labels=unique_labels,
+                                      target_names=class_names, 
+                                      output_dict=True,
+                                      zero_division=0)
+        
+        # Extract per-class metrics
+        classes = [c for c in class_names if c in report]
+        precisions = [report[c]['precision'] for c in classes]
+        recalls = [report[c]['recall'] for c in classes]
+        f1_scores = [report[c]['f1-score'] for c in classes]
+        supports = [report[c]['support'] for c in classes]
+        
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(18, 14))
+        
+        x_pos = np.arange(len(classes))
+        
+        # Precision
+        bars1 = ax1.bar(x_pos, precisions, color='skyblue', edgecolor='black')
+        ax1.set_ylabel('Precision', fontsize=12)
+        ax1.set_title('Per-Class Precision', fontsize=14)
+        ax1.set_xticks(x_pos)
+        ax1.set_xticklabels(classes, rotation=45, ha='right')
+        ax1.set_ylim([0, 1.05])
+        ax1.grid(True, alpha=0.3, axis='y')
+        for bar, val in zip(bars1, precisions):
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{val:.2f}', ha='center', va='bottom', fontsize=8)
+        
+        # Recall
+        bars2 = ax2.bar(x_pos, recalls, color='lightcoral', edgecolor='black')
+        ax2.set_ylabel('Recall', fontsize=12)
+        ax2.set_title('Per-Class Recall', fontsize=14)
+        ax2.set_xticks(x_pos)
+        ax2.set_xticklabels(classes, rotation=45, ha='right')
+        ax2.set_ylim([0, 1.05])
+        ax2.grid(True, alpha=0.3, axis='y')
+        for bar, val in zip(bars2, recalls):
+            height = bar.get_height()
+            ax2.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{val:.2f}', ha='center', va='bottom', fontsize=8)
+        
+        # F1-Score
+        bars3 = ax3.bar(x_pos, f1_scores, color='lightgreen', edgecolor='black')
+        ax3.set_ylabel('F1-Score', fontsize=12)
+        ax3.set_title('Per-Class F1-Score', fontsize=14)
+        ax3.set_xticks(x_pos)
+        ax3.set_xticklabels(classes, rotation=45, ha='right')
+        ax3.set_ylim([0, 1.05])
+        ax3.grid(True, alpha=0.3, axis='y')
+        for bar, val in zip(bars3, f1_scores):
+            height = bar.get_height()
+            ax3.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{val:.2f}', ha='center', va='bottom', fontsize=8)
+        
+        # Support
+        bars4 = ax4.bar(x_pos, supports, color='plum', edgecolor='black')
+        ax4.set_ylabel('Support (# samples)', fontsize=12)
+        ax4.set_title('Per-Class Support', fontsize=14)
+        ax4.set_xticks(x_pos)
+        ax4.set_xticklabels(classes, rotation=45, ha='right')
+        ax4.grid(True, alpha=0.3, axis='y')
+        for bar, val in zip(bars4, supports):
+            height = bar.get_height()
+            ax4.text(bar.get_x() + bar.get_width()/2., height,
+                    f'{int(val)}', ha='center', va='bottom', fontsize=8)
+        
+        plt.tight_layout()
+        metrics_path = artifacts_dir / "per_class_metrics.png"
+        plt.savefig(metrics_path, dpi=300, bbox_inches='tight')
+        mlflow.log_artifact(str(metrics_path))
+        plt.close()
+        
+        # 8. Save Classification Report as JSON
+        report_path = artifacts_dir / "classification_report.json"
+        with open(report_path, 'w') as f:
+            json.dump(report, f, indent=2)
+        mlflow.log_artifact(str(report_path))
+        
+        # 9. Training Summary
+        summary = {
+            "best_val_acc": float(best_val_acc),
+            "best_epoch": int(best_epoch),
+            "final_train_acc": float(history["train_acc"][-1]) if len(history["train_acc"]) > 0 else None,
+            "final_val_acc": float(history["val_acc"][-1]) if len(history["val_acc"]) > 0 else None,
+            "final_train_loss": float(history["train_loss"][-1]) if len(history["train_loss"]) > 0 else None,
+            "final_val_loss": float(history["val_loss"][-1]) if len(history["val_loss"]) > 0 else None,
+            "total_epochs": len(history["train_loss"]),
+            "num_classes": num_classes,
+            "actual_classes_in_val": int(actual_num_classes),
+            "train_samples": len(train_dataset),
+            "val_samples": len(val_dataset)
+        }
+        summary_path = artifacts_dir / "training_summary.json"
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        mlflow.log_artifact(str(summary_path))
+        
+        # 10. Save training history as JSON
+        history_json_path = artifacts_dir / "training_history.json"
+        with open(history_json_path, 'w') as f:
+            json.dump(history, f, indent=2)
+        mlflow.log_artifact(str(history_json_path))
+        
+        logger.info(f"All artifacts saved to {artifacts_dir}")
+        logger.info("Visualization generation complete!")
 
     return {"best_val_acc": best_val_acc, "best_epoch": best_epoch}
 

@@ -44,6 +44,8 @@ class ManualBBoxReader(BaseDetector):
                 - annotations_file: Path to CSV/JSONL with all annotations (optional)
                 - annotations_dir: Directory with per-image JSON files (optional)
                 - bbox_format: "xyxy" or "xywh" (default: "xyxy")
+                    - "xyxy": [x1, y1, x2, y2]
+                    - "xywh": [x, y, width, height]
         """
         self.annotations_file = cfg.get("annotations_file")
         self.annotations_dir = cfg.get("annotations_dir")
@@ -147,11 +149,21 @@ class ManualBBoxReader(BaseDetector):
                         # Get bounding box
                         if "rect" in item:
                             rect = item["rect"]
-                            x, y, w, h = rect[0], rect[1], rect[2], rect[3]
-                            bbox_data["x1"] = x
-                            bbox_data["y1"] = y
-                            bbox_data["x2"] = x + w
-                            bbox_data["y2"] = y + h
+                            
+                            # Parse based on configured format
+                            if self.bbox_format == "xywh":
+                                # Format: [x, y, width, height]
+                                x, y, w, h = rect[0], rect[1], rect[2], rect[3]
+                                bbox_data["x1"] = x
+                                bbox_data["y1"] = y
+                                bbox_data["x2"] = x + w
+                                bbox_data["y2"] = y + h
+                            else:  # "xyxy" (default)
+                                # Format: [x1, y1, x2, y2]
+                                bbox_data["x1"] = rect[0]
+                                bbox_data["y1"] = rect[1]
+                                bbox_data["x2"] = rect[2]
+                                bbox_data["y2"] = rect[3]
                         elif "bbox_xyxy" in item:
                             bbox = item["bbox_xyxy"]
                             bbox_data["x1"] = bbox[0]
@@ -179,15 +191,15 @@ class ManualBBoxReader(BaseDetector):
         return []
 
     def _convert_bbox(self, bbox_data: dict) -> BBox:
-        """Convert bbox dict to BBox object, handling xywh if needed."""
-        if self.bbox_format == "xywh":
-            x, y, w, h = bbox_data["x"], bbox_data["y"], bbox_data["w"], bbox_data["h"]
-            x1, y1, x2, y2 = x, y, x + w, y + h
-        else:
-            x1 = bbox_data.get("x1", 0)
-            y1 = bbox_data.get("y1", 0)
-            x2 = bbox_data.get("x2", 0)
-            y2 = bbox_data.get("y2", 0)
+        """Convert bbox dict to BBox object.
+        
+        Note: xywh->xyxy conversion is already done in _load_per_image_json,
+        so we always read x1, y1, x2, y2 here.
+        """
+        x1 = bbox_data.get("x1", 0)
+        y1 = bbox_data.get("y1", 0)
+        x2 = bbox_data.get("x2", 0)
+        y2 = bbox_data.get("y2", 0)
 
         return BBox(
             x1=float(x1),
