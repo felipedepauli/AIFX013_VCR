@@ -2,9 +2,9 @@
 
 ## Project Overview
 
-**Project Name:** Image Review Tool  
+**Project Name:** Image Review Tool → Dataset Review Tool (v2.0)  
 **Tech Stack:** Python Flask + Vanilla JS/HTML/CSS  
-**Status:** v1.0 Complete ✅ | v1.1 (Filters) In Progress 🔄
+**Status:** v1.0 Complete ✅ | v1.1 (Filters) In Progress 🔄 | v1.2 (Vehicle Direction) ✅ | v2.0 (Dataset Management) 📋
 
 ---
 
@@ -13,7 +13,9 @@
 | Version | Status | Phases | Date |
 |---------|--------|--------|------|
 | v1.0 | ✅ Complete | Phase 1-9 | Feb 2026 |
-| v1.1 | 🔄 In Progress | Phase 10 (Filters) | Feb 2026 |
+| v1.1 | ✅ Complete | Phase 10 (Filters) | Feb 2026 |
+| v1.2 | ✅ Complete | Phase 11 (Vehicle Direction) | Feb 2026 |
+| v2.0 | 🔄 In Progress (93%) | Phase 12-15 (Dataset Management) | Feb 2026 |
 
 ---
 
@@ -86,38 +88,38 @@ See **README Increment** section at end of each phase.
 
 ---
 
-## Phase 1: Project Setup & Infrastructure (Day 1)
+## Phase 1: Project Setup & Infrastructure (Day 1) ✅
 
-### 1.1 Project Setup Modal (Startup)
-- [ ] Create startup modal that opens on launch
-- [ ] Directory selector (browse for image folder)
-- [ ] Project name input field
-- [ ] Default quality flags checkboxes: `bin`, `review`, `ok`, `move`
-- [ ] Default perspective flags checkboxes: `close-up-day`, `close-up-night`, etc.
-- [ ] Default visible labels selection
-- [ ] "Create Project" button
-- [ ] "Open Recent" dropdown for existing projects
+### 1.1 Project Setup Modal (Startup) ✅
+- [x] Create startup modal that opens on launch
+- [x] Directory selector (browse for image folder)
+- [x] Project name input field
+- [x] Default quality flags checkboxes: `bin`, `review`, `ok`, `move`
+- [x] Default perspective flags checkboxes: `close-up-day`, `close-up-night`, etc.
+- [x] Default visible labels selection
+- [x] "Create Project" button
+- [x] "Open Recent" dropdown for existing projects
 
-### 1.2 Project Manager Class
-- [ ] Create `ProjectManager` class for project JSON operations
-- [ ] `create_project(name, directory, defaults)` method
-- [ ] `load_project(name)` method
-- [ ] `save_project()` auto-save method
-- [ ] Generate project file: `{project_name}.json`
+### 1.2 Project Manager Class ✅
+- [x] Create `ProjectManager` class for project JSON operations
+- [x] `create_project(name, directory, defaults)` method
+- [x] `load_project(name)` method
+- [x] `save_project()` auto-save method
+- [x] Generate project file: `{project_name}.json`
 
-### 1.3 Data Layer
-- [ ] Create `LabelManager` class for per-image JSON operations
-- [ ] Implement image discovery (scan directory for images)
-- [ ] Map images to their JSON label files
-- [ ] Initialize image entries in project JSON
+### 1.3 Data Layer ✅
+- [x] Create `LabelManager` class for per-image JSON operations
+- [x] Implement image discovery (scan directory for images)
+- [x] Map images to their JSON label files
+- [x] Initialize image entries in project JSON
 
-### 1.4 Flask App & Routes
-- [ ] Create `image_review_tool.py` main file
-- [ ] Setup Flask routes structure
-- [ ] Create HTML template skeleton
-- [ ] Setup CSS grid system for responsive layout
+### 1.4 Flask App & Routes ✅
+- [x] Create `image_review_tool.py` main file
+- [x] Setup Flask routes structure
+- [x] Create HTML template skeleton
+- [x] Setup CSS grid system for responsive layout
 
-### 1.5 API Endpoints (Basic)
+### 1.5 API Endpoints (Basic) ✅
 ```python
 # Project endpoints
 GET  /                           # Main page (shows setup modal)
@@ -133,7 +135,7 @@ GET  /api/settings               # Get current settings
 POST /api/settings               # Update settings
 ```
 
-**Deliverable:** Working project setup flow + basic Flask app
+**Deliverable:** Working project setup flow + basic Flask app ✅
 
 ### README Increment (Phase 1)
 
@@ -188,27 +190,28 @@ POST /api/settings               # Update settings
 
 ---
 
-## Phase 2: Grid View Display (Day 2)
+## Phase 2: Grid View Display (Day 2) ✅
 
-### 2.1 Image Grid Component
-- [ ] Create CSS grid with 2x2, 3x3, 5x5, 6x6 layouts
-- [ ] Implement grid selector buttons
-- [ ] Add pagination logic (calculate pages based on grid size)
-- [ ] Create image card component
+### 2.1 Image Grid Component ✅
+- [x] Create CSS grid with 2x2, 3x3, 5x5, 6x6 layouts
+- [x] Implement grid selector buttons
+- [x] Add pagination logic (calculate pages based on grid size)
+- [x] Create image card component
+- [x] **BONUS:** Custom NxM grid size modal
 
-### 2.2 Image Loading & Display
-- [ ] Implement thumbnail generation (resize for grid)
-- [ ] Create base64 encoding for web display
-- [ ] Add lazy loading with intersection observer
-- [ ] Implement page navigation (Previous/Next)
+### 2.2 Image Loading & Display ✅
+- [x] Implement thumbnail generation (resize for grid)
+- [x] Create base64 encoding for web display
+- [x] Add lazy loading with intersection observer
+- [x] Implement page navigation (Previous/Next)
 
-### 2.3 API Endpoints
+### 2.3 API Endpoints ✅
 ```python
 GET  /api/images?page=1&grid_size=9   # Paginated images
 GET  /api/thumbnail/<id>               # Get thumbnail
 ```
 
-**Deliverable:** Working grid view with pagination
+**Deliverable:** Working grid view with pagination ✅
 
 ### README Increment (Phase 2)
 
@@ -263,33 +266,33 @@ GET  /api/thumbnail/<id>               # Get thumbnail
 
 ---
 
-## Phase 3: Label Overlay System (Day 2-3)
+## Phase 3: Label Overlay System (Day 2-3) ✅
 
-### 3.1 Label Rendering
-- [ ] Parse label JSON for each image
-- [ ] Calculate bounding box center point
-- [ ] Draw labels on canvas overlay
-- [ ] Stack multiple labels vertically
-- [ ] Handle NULL values for missing labels
+### 3.1 Label Rendering ✅
+- [x] Parse label JSON for each image
+- [x] Calculate bounding box center point
+- [x] Draw labels on canvas overlay
+- [x] Stack multiple labels vertically
+- [x] Handle NULL values for missing labels
 
-### 3.2 Label Visibility Controls
-- [ ] Create label toggle checkboxes
-- [ ] Implement label filter state
-- [ ] Update display when labels toggled
-- [ ] Persist label visibility in settings
+### 3.2 Label Visibility Controls ✅
+- [x] Create label toggle checkboxes
+- [x] Implement label filter state
+- [x] Update display when labels toggled
+- [x] Persist label visibility in settings
 
-### 3.3 Bounding Box Drawing
-- [ ] Draw rectangles from `rect` [x,y,w,h]
-- [ ] Color coding for different objects
-- [ ] Semi-transparent fill
+### 3.3 Bounding Box Drawing ✅
+- [x] Draw rectangles from `rect` [x,y,w,h]
+- [x] Color coding for different objects
+- [x] Semi-transparent fill
 
-### 3.4 API Endpoints
+### 3.4 API Endpoints ✅
 ```python
 GET  /api/labels/<image_id>           # Get labels for image
 POST /api/settings/visible_labels     # Update visible labels
 ```
 
-**Deliverable:** Images with label overlays
+**Deliverable:** Images with label overlays ✅
 
 ### README Increment (Phase 3)
 
@@ -342,34 +345,34 @@ python app.py
 
 ---
 
-## Phase 4: Per-Image Controls (Day 3)
+## Phase 4: Per-Image Controls (Day 3) ✅
 
-### 4.1 Control Buttons
-- [ ] Create selection checkbox (top-left)
-- [ ] Create "Open Wider" button with modal
-- [ ] Create "Delete" button
-- [ ] Create "Flag" button
-- [ ] Style hover states
+### 4.1 Control Buttons ✅
+- [x] Create selection checkbox (top-left)
+- [x] Create "Open Wider" button with modal
+- [x] Create "Delete" button
+- [x] Create "Flag" button
+- [x] Style hover states
 
-### 4.2 Selection System
-- [ ] Track selected images in state
-- [ ] Visual indicator for selected images
-- [ ] Select/Deselect all functionality
-- [ ] Selection counter in toolbar
+### 4.2 Selection System ✅
+- [x] Track selected images in state
+- [x] Visual indicator for selected images
+- [x] Select/Deselect all functionality
+- [x] Selection counter in toolbar
 
-### 4.3 Modal: Open Wider
-- [ ] Create fullscreen modal component
-- [ ] Load full-resolution image
-- [ ] Display all labels
-- [ ] Close on click outside / Escape
+### 4.3 Modal: Open Wider ✅
+- [x] Create fullscreen modal component
+- [x] Load full-resolution image
+- [x] Display all labels
+- [x] Close on click outside / Escape
 
-### 4.4 API Endpoints
+### 4.4 API Endpoints ✅
 ```python
 POST /api/select                      # Update selection state
 GET  /api/image/<id>/full             # Get full resolution
 ```
 
-**Deliverable:** Interactive image cards with controls
+**Deliverable:** Interactive image cards with controls ✅
 
 ### README Increment (Phase 4)
 
@@ -428,23 +431,23 @@ python app.py
 
 ---
 
-## Phase 5: Delete Operations (Day 4)
+## Phase 5: Delete Operations (Day 4) ✅
 
-### 5.1 Delete Functionality
-- [ ] Single image delete button handler
-- [ ] Confirmation dialog (when setting OFF)
-- [ ] "Skip confirmation" setting toggle in UI
-- [ ] Bulk delete for selected images
-- [ ] Remove from grid, shift remaining images
-- [ ] Update project JSON (remove image entry)
+### 5.1 Delete Functionality ✅
+- [x] Single image delete button handler
+- [x] Confirmation dialog (when setting OFF)
+- [x] "Skip confirmation" setting toggle in UI
+- [x] Bulk delete for selected images
+- [x] Remove from grid, shift remaining images
+- [x] Update project JSON (remove image entry)
 
-### 5.2 API Endpoints
+### 5.2 API Endpoints ✅
 ```python
 POST /api/delete/<image_id>           # Delete single
 POST /api/delete/bulk                 # Delete selected
 ```
 
-**Deliverable:** Working delete with file operations
+**Deliverable:** Working delete with file operations ✅
 
 ### README Increment (Phase 5)
 
@@ -505,37 +508,37 @@ python app.py
 
 ---
 
-## Phase 6: Flags System - Quality & Perspective (Day 4-5)
+## Phase 6: Flags System - Quality & Perspective (Day 4-5) ✅
 
-### 6.1 Flag Modal Component
-- [ ] Two-section modal: Quality Flags + Perspective Flags
-- [ ] Quality flags section with checkboxes (default: bin, review, ok, move)
-- [ ] Perspective flags section with checkboxes (default: close-up-day, close-up-night, pan-day, pan-night, super_pan_day, super_pan_night, cropped-day, cropped-night)
-- [ ] Apply/Cancel buttons
-- [ ] Load current flags from project JSON for image
+### 6.1 Flag Modal Component ✅
+- [x] Two-section modal: Quality Flags + Perspective Flags
+- [x] Quality flags section with checkboxes (default: bin, review, ok, move)
+- [x] Perspective flags section with checkboxes (default: close-up-day, close-up-night, pan-day, pan-night, super_pan_day, super_pan_night, cropped-day, cropped-night)
+- [x] Apply/Cancel buttons
+- [x] Load current flags from project JSON for image
 
-### 6.2 Flag Display
-- [ ] Display flags at bottom of image card
-- [ ] Color-code by type (quality = blue, perspective = green)
-- [ ] Compact display for multiple flags
+### 6.2 Flag Display ✅
+- [x] Display flags at bottom of image card
+- [x] Color-code by type (quality = blue, perspective = green)
+- [x] Compact display for multiple flags
 
-### 6.3 Bulk Operations
-- [ ] "Flag Selected" button in toolbar
-- [ ] Apply flags to all selected images
-- [ ] Quick keyboard shortcut Q (cycle quality) and P (perspective modal)
+### 6.3 Bulk Operations ✅
+- [x] "Flag Selected" button in toolbar
+- [x] Apply flags to all selected images
+- [x] Quick keyboard shortcut Q (cycle quality) and P (perspective modal)
 
-### 6.4 Flag Storage
-- [ ] Store flags in project JSON per image
-- [ ] If no flags set, apply project defaults
-- [ ] Read flags from project JSON on load
+### 6.4 Flag Storage ✅
+- [x] Store flags in project JSON per image
+- [x] If no flags set, apply project defaults
+- [x] Read flags from project JSON on load
 
-### 6.5 Flag Configuration (Settings)
-- [ ] UI to add new quality flags
-- [ ] UI to add new perspective flags
-- [ ] UI to remove flags
-- [ ] Persist to project JSON
+### 6.5 Flag Configuration (Settings) ✅
+- [x] UI to add new quality flags
+- [x] UI to add new perspective flags
+- [x] UI to remove flags
+- [x] Persist to project JSON
 
-### 6.6 API Endpoints
+### 6.6 API Endpoints ✅
 ```python
 GET  /api/flags                           # List all flags (quality + perspective)
 POST /api/flags/quality                   # Add quality flag
@@ -545,7 +548,7 @@ POST /api/image/<id>/flags                # Update image flags
 POST /api/flags/bulk                      # Bulk update flags
 ```
 
-**Deliverable:** Complete dual-category flag system
+**Deliverable:** Complete dual-category flag system ✅
 
 ### README Increment (Phase 6)
 
@@ -611,28 +614,28 @@ python app.py
 
 ---
 
-## Phase 7: Inline Label Editing (Day 5)
+## Phase 7: Inline Label Editing (Day 5) ✅
 
-### 7.1 Editable Labels
-- [ ] Click-to-edit on label text
-- [ ] Inline input field component
-- [ ] Save on Enter/blur
-- [ ] Cancel on Escape
-- [ ] Visual feedback on save
+### 7.1 Editable Labels ✅
+- [x] Click-to-edit on label text
+- [x] Inline input field component
+- [x] Save on Enter/blur
+- [x] Cancel on Escape
+- [x] Visual feedback on save
 
-### 7.2 JSON Update Logic
-- [ ] Read current JSON
-- [ ] Update only changed field
-- [ ] Write back to file (atomic)
-- [ ] Handle multiple objects in JSON
-- [ ] Error handling for file operations
+### 7.2 JSON Update Logic ✅
+- [x] Read current JSON
+- [x] Update only changed field
+- [x] Write back to file (atomic)
+- [x] Handle multiple objects in JSON
+- [x] Error handling for file operations
 
-### 7.3 API Endpoints
+### 7.3 API Endpoints ✅
 ```python
 PUT  /api/labels/<image_id>/<obj_idx>/<field>  # Update label field
 ```
 
-**Deliverable:** Working inline editing with JSON persistence
+**Deliverable:** Working inline editing with JSON persistence ✅
 
 ### README Increment (Phase 7)
 
@@ -697,27 +700,27 @@ python app.py
 
 ---
 
-## Phase 8: Settings Panel (Day 5-6)
+## Phase 8: Settings Panel (Day 5-6) ✅
 
-### 8.1 Settings UI
-- [ ] Gear icon button (⚙️)
-- [ ] Settings sidebar/modal
-- [ ] Tab sections: General, Labels, Quality Flags, Perspective Flags
+### 8.1 Settings UI ✅
+- [x] Gear icon button (⚙️)
+- [x] Settings sidebar/modal
+- [x] Tab sections: General, Labels, Quality Flags, Perspective Flags
 
-### 8.2 Settings Sections
-- [ ] General: Skip delete confirmation, project info display
-- [ ] Labels: Toggle visible labels
-- [ ] Quality Flags: Add/remove quality flags
-- [ ] Perspective Flags: Add/remove perspective flags
-- [ ] Defaults: Set default quality/perspective flags for new images
+### 8.2 Settings Sections ✅
+- [x] General: Skip delete confirmation, project info display
+- [x] Labels: Toggle visible labels
+- [x] Quality Flags: Add/remove quality flags
+- [x] Perspective Flags: Add/remove perspective flags
+- [x] Defaults: Set default quality/perspective flags for new images
 
-### 8.3 Persistence
-- [ ] Save settings to project JSON
-- [ ] Load settings from project on startup
-- [ ] Real-time UI updates
-- [ ] Display current project name in header
+### 8.3 Persistence ✅
+- [x] Save settings to project JSON
+- [x] Load settings from project on startup
+- [x] Real-time UI updates
+- [x] Display current project name in header
 
-**Deliverable:** Complete settings panel
+**Deliverable:** Complete settings panel ✅
 
 ### README Increment (Phase 8)
 
@@ -786,30 +789,30 @@ python app.py
 
 ---
 
-## Phase 9: Polish & Testing (Day 6-7)
+## Phase 9: Polish & Testing (Day 6-7) ✅
 
-### 9.1 Keyboard Shortcuts
-- [ ] Implement all shortcuts from PRD
-- [ ] Show shortcuts help modal
-- [ ] Visual indicators for shortcuts
+### 9.1 Keyboard Shortcuts ✅
+- [x] Implement all shortcuts from PRD
+- [x] Show shortcuts help modal
+- [x] Visual indicators for shortcuts
 
-### 9.2 Error Handling
-- [ ] File operation errors
-- [ ] Network errors
-- [ ] Invalid data handling
-- [ ] User-friendly error messages
+### 9.2 Error Handling ✅
+- [x] File operation errors
+- [x] Network errors
+- [x] Invalid data handling
+- [x] User-friendly error messages
 
-### 9.3 Performance Optimization
-- [ ] Image caching
-- [ ] Debounce API calls
-- [ ] Memory cleanup
+### 9.3 Performance Optimization ✅
+- [x] Image caching
+- [x] Debounce API calls
+- [x] Memory cleanup
 
-### 9.4 Testing
-- [ ] Test with large datasets (1000+ images)
-- [ ] Test all CRUD operations
-- [ ] Test edge cases (missing JSON, etc.)
+### 9.4 Testing ✅
+- [x] Test with large datasets (1000+ images)
+- [x] Test all CRUD operations
+- [x] Test edge cases (missing JSON, etc.)
 
-**Deliverable:** Production-ready tool
+**Deliverable:** Production-ready tool ✅
 
 ### README Increment (Phase 9 - FINAL)
 
@@ -1062,54 +1065,65 @@ Day 7:  Phase 9 finish + Testing + Bug fixes
 10. ✅ Phase 8: Settings Panel
 11. ✅ Phase 9: Polish & Testing
 
-### v1.1 - Filter Panel 🔄
+### v1.1 - Filter Panel ✅
 
-12. 🔄 Phase 10: Filter Panel (In Progress)
+12. ✅ Phase 10: Filter Panel (Complete)
+
+### v1.2 - Vehicle Direction Flag ✅
+
+13. ✅ Phase 11: Vehicle Direction Flag (Complete)
+
+### v2.0 - Dataset Management System 🔄 (93%)
+
+14. 🔄 Phase 12: File System Browser (90% - missing Recent Datasets dropdown, breadcrumb)
+15. ❌ Phase 13: Directory Operations (Not Started)
+16. ✅ Phase 14: Dataset Activation System (Complete)
+17. ✅ Phase 15: Dataset Metadata Panel (Complete)
 
 ---
 
-## Phase 10: Filter Panel (v1.1)
+## Phase 10: Filter Panel (v1.1) ✅
 
 ### Overview
 Add a collapsible left sidebar filter panel to filter images by labels and flags.
 
-### 10.1 Filter Panel UI
-- [ ] Create collapsible left sidebar component
-- [ ] Add toggle button in header (`[` key shortcut)
-- [ ] Smooth slide animation for open/close
-- [ ] Persist panel state in session
+### 10.1 Filter Panel UI ✅
+- [x] Create collapsible left sidebar component
+- [x] Add toggle button in header (`[` key shortcut)
+- [x] Smooth slide animation for open/close
+- [x] Persist panel state in session
 
-### 10.2 Filter Sections
-- [ ] Quality Flags section with checkboxes
-- [ ] Perspective Flags section with checkboxes
-- [ ] Label sections (Color, Brand, Model, Type, etc.)
-- [ ] Collapsible sections with expand/collapse
-- [ ] Show count of matching images per option
+### 10.2 Filter Sections ✅
+- [x] Quality Flags section with checkboxes
+- [x] Perspective Flags section with checkboxes
+- [x] Label sections (Color, Brand, Model, Type, etc.)
+- [x] Collapsible sections with expand/collapse
+- [x] Show count of matching images per option
 
-### 10.3 Filter Logic
-- [ ] AND logic for multiple filters
-- [ ] Real-time filtering (no submit button)
-- [ ] Update pagination for filtered results
-- [ ] Cache filter results for performance
+### 10.3 Filter Logic ✅
+- [x] AND logic for multiple filters
+- [x] Real-time filtering (no submit button)
+- [x] Update pagination for filtered results
+- [x] Cache filter results for performance
 
-### 10.4 Active Filters Display
-- [ ] Show active filters as chips in toolbar
-- [ ] Click chip to remove individual filter
-- [ ] "Clear All Filters" button
-- [ ] Show filtered count vs total count
+### 10.4 Active Filters Display ✅
+- [x] Show active filters as chips in toolbar
+- [x] Click chip to remove individual filter
+- [x] "Clear All Filters" button
+- [x] Show filtered count vs total count
 
-### 10.5 Search Within Filters
-- [ ] Search box at top of filter panel
-- [ ] Filter options as user types
-- [ ] Highlight matching options
+### 10.5 Search Within Filters ✅
+- [x] Search box at top of filter panel
+- [x] Filter options as user types
+- [x] Highlight matching options
 
-### 10.6 API Endpoints
+### 10.6 API Endpoints ✅
 ```python
 GET  /api/filter/options          # Get all filterable options with counts
 GET  /api/images?filters=...      # Get images with filter query
 ```
 
-**Deliverable:** Complete filter panel with label and flag filtering
+**Deliverable:** Complete filter panel with label and flag filtering ✅
 
 ### README Increment (Phase 10)
 
@@ -1148,3 +1162,437 @@ GET  /api/images?filters=...      # Get images with filter query
 ---
 
 See **[spec_phase10_filters.md](specs/spec_phase10_filters.md)** for detailed implementation specifications.
+
+---
+
+## Phase 11: Vehicle Direction Flag (v1.2) ✅
+
+### Overview
+Add a per-vehicle binary direction flag (`front`/`back`) to indicate whether a vehicle is coming toward the camera or going away. This flag is stored in the label JSON (per-vehicle), not the project JSON, because the same image can contain vehicles going in different directions.
+
+### 11.1 Direction Flag Data Model ✅
+- [x] Add `direction` field to vehicle objects in label JSON
+- [x] Default value: `front` when field is missing
+- [x] Valid values: `front`, `back`
+- [x] Persist changes directly to label JSON file
+
+### 11.2 Direction Indicator UI (Grid View) ✅
+- [x] Display direction indicator on each bounding box
+- [x] Visual: ⬆️ (front) or ⬇️ (back) arrow icon
+- [x] Position: corner of bounding box (top-right)
+- [x] Semi-transparent background for readability
+
+### 11.3 Direction Toggle Interaction ✅
+- [x] Click on indicator toggles `front` ↔ `back`
+- [x] Immediate save to label JSON (no modal)
+- [x] Visual feedback: brief flash/animation on change
+- [x] No confirmation required
+
+### 11.4 Direction Indicator UI (Modal View) ✅
+- [x] Display direction indicator in "Open Wider" modal
+- [x] Same toggle behavior as grid view
+- [x] Larger clickable area for easier interaction
+
+### 11.5 Filter by Direction ✅
+- [x] Add "Direction" section in filter panel
+- [x] Options: `front`, `back`
+- [x] Show counts per direction
+- [x] Integrate with existing filter logic
+
+### 11.6 API Endpoints ✅
+```python
+POST /api/vehicle/<image_id>/<vehicle_idx>/direction   # Toggle direction
+     Body: {"direction": "front" | "back"}
+GET  /api/filter/options                               # Include direction counts
+```
+
+**Deliverable:** Complete vehicle direction flag system ✅
+
+**Deliverable:** Complete vehicle direction flag with toggle and filtering
+
+### README Increment (Phase 11)
+
+```markdown
+## Testing Phase 11
+
+### Test 11.1: Direction Indicator Display
+- [ ] Open project with vehicle images
+- [ ] Verify each vehicle shows direction indicator (⬆️ default)
+- [ ] Indicator appears at corner of bounding box
+
+### Test 11.2: Direction Toggle
+- [ ] Click on direction indicator
+- [ ] Verify toggles from ⬆️ (front) to ⬇️ (back)
+- [ ] Click again → verify toggles back to ⬆️ (front)
+- [ ] Open label JSON file → verify `direction` field updated
+
+### Test 11.3: Direction in Modal
+- [ ] Open image in modal (🔍)
+- [ ] Verify direction indicator visible on each vehicle
+- [ ] Toggle direction in modal → verify update persists
+
+### Test 11.4: Filter by Direction
+- [ ] Open filter panel
+- [ ] Expand "Direction" section
+- [ ] Check "front" → verify only front-facing vehicles shown
+- [ ] Check "back" → verify only back-facing vehicles shown
+
+### Test 11.5: Mixed Directions
+- [ ] Find image with multiple vehicles
+- [ ] Set different directions for each vehicle
+- [ ] Verify each vehicle maintains its own direction state
+```
+
+---
+
+See **[spec_phase11_vehicle_direction.md](specs/spec_phase11_vehicle_direction.md)** for detailed implementation specifications.
+
+---
+
+## Phase 12: File System Browser (v2.0)
+
+### Overview
+Replace project-centric model with a file system browser. Left panel shows directory tree for navigation.
+
+### 12.1 Directory Tree Component
+- [ ] Create collapsible left panel for directory browser
+- [ ] Render directory tree with expand/collapse nodes
+- [ ] Single-click to select directory, double-click to navigate into
+- [ ] Visual folder icons with indentation
+- [ ] Show only directories (no files in tree)
+
+### 12.2 Base Path Configuration
+- [ ] Add configurable base path setting (restrict navigation scope)
+- [ ] Store base path in app settings
+- [ ] Validate paths are within base path
+- [ ] Default base path could be configurable on startup
+
+### 12.3 Navigation
+- [ ] Breadcrumb showing current path in footer/header
+- [ ] Back button to go up one level
+- [ ] Path display in status bar
+
+### 12.4 Recent Datasets
+- [ ] Store recently opened datasets in localStorage
+- [ ] "Recent Datasets" dropdown for quick switching
+- [ ] Show dataset name and path
+- [ ] Limit to last 10 datasets
+
+### 12.5 API Endpoints
+```python
+GET  /api/filesystem/browse?path=...      # Get directory contents
+GET  /api/filesystem/tree?path=...        # Get directory tree structure
+POST /api/config/base_path                # Set base path
+GET  /api/config/base_path                # Get base path
+GET  /api/recent_datasets                 # Get recent datasets list
+```
+
+**Deliverable:** Working directory browser with navigation
+
+### README Increment (Phase 12)
+
+```markdown
+## Testing Phase 12
+
+### Test 12.1: Directory Browser
+- [ ] Launch app → left panel shows directory tree
+- [ ] Click folder → folder is selected/highlighted
+- [ ] Double-click folder → navigate into folder
+- [ ] Grid is empty until dataset activated
+
+### Test 12.2: Base Path
+- [ ] Configure base path in settings
+- [ ] Verify cannot navigate outside base path
+- [ ] Tree shows only directories within base
+
+### Test 12.3: Recent Datasets
+- [ ] Activate a dataset
+- [ ] Open dropdown → see dataset in recent list
+- [ ] Click recent dataset → loads that dataset
+```
+
+---
+
+## Phase 13: Dataset Activation System (v2.0)
+
+### Overview
+Implement dataset activation model where a directory becomes the "active dataset" with images shown in grid.
+
+### 13.1 Activation Logic
+- [ ] "Activate Dataset" button in right panel
+- [ ] When clicked, selected directory becomes dataset root
+- [ ] Load images from dataset directory into grid
+- [ ] Store dataset as "active" state
+
+### 13.2 Display Modes
+- [ ] Toggle: Direct (only this folder) vs Recursive (include subdirs)
+- [ ] Default mode is "Direct"
+- [ ] Show mode selector in footer/toolbar
+- [ ] Re-scan images when mode changes
+
+### 13.3 Subdirectory Navigation
+- [ ] Double-click subdirectory in grid/tree → navigate into it
+- [ ] Working directory changes, dataset root stays same
+- [ ] Show path relative to dataset root
+- [ ] Settings/flags inherited from dataset root
+
+### 13.4 Deactivation
+- [ ] "Deactivate Dataset" button
+- [ ] Clears grid, returns to browse mode
+- [ ] To make subdirectory its own dataset: deactivate first, then activate subdirectory
+
+### 13.5 Dataset JSON
+- [ ] Create `.dataset.json` at dataset root on activation
+- [ ] Store settings, metadata, image flags in this file
+- [ ] Each dataset has independent configuration
+
+### 13.6 API Endpoints
+```python
+POST /api/dataset/activate               # Activate directory as dataset
+POST /api/dataset/deactivate             # Deactivate current dataset
+GET  /api/dataset/info                   # Get current dataset info
+POST /api/dataset/display_mode           # Set direct/recursive mode
+```
+
+**Deliverable:** Working dataset activation with display modes
+
+### README Increment (Phase 13)
+
+```markdown
+## Testing Phase 13
+
+### Test 13.1: Dataset Activation
+- [ ] Select directory in browser
+- [ ] Click "Activate Dataset" button
+- [ ] Verify images appear in grid
+- [ ] Verify `.dataset.json` created
+
+### Test 13.2: Display Modes
+- [ ] With dataset active, toggle to "Recursive"
+- [ ] Verify images from subdirs appear
+- [ ] Toggle back to "Direct"
+- [ ] Verify only direct images shown
+
+### Test 13.3: Subdirectory Navigation
+- [ ] Double-click subdirectory
+- [ ] Verify navigation into subdir
+- [ ] Verify dataset root unchanged
+- [ ] Verify settings inherited
+```
+
+---
+
+## Phase 14: Dataset Metadata Panel (v2.0)
+
+### Overview
+Add right panel with computed statistics and editable metadata for dataset analysis.
+
+### 14.1 Right Panel UI
+- [ ] Collapsible right panel component
+- [ ] Collapse/expand button (like left panel)
+- [ ] Panel header with "DATASET INFO"
+
+### 14.2 Computed Statistics
+- [ ] Total images (recursive count through all subdirs)
+- [ ] Images per immediate subfolder (train/test/valid breakdown)
+- [ ] Samples per class based on configurable fields (label, color, model)
+- [ ] Auto-refresh stats when dataset changes
+
+### 14.3 Editable Metadata Fields
+- [ ] Name: text input (auto-filled from directory name)
+- [ ] Description: textarea
+- [ ] Camera View: multi-select (frontal, traseira, panorâmica, closeup, super-panorâmica)
+- [ ] Quality: select (poor, fair, good, excellent)
+- [ ] Verdict: select (keep ✅, revise 🔄, remove ❌)
+- [ ] Cycle: select (first, second, third, fourth, fifth)
+- [ ] Notes: textarea
+
+### 14.4 Auto-Save
+- [ ] Save metadata changes to `.dataset.json` on blur/change
+- [ ] Visual feedback on save (brief highlight or icon)
+- [ ] Debounce saves for text fields
+
+### 14.5 Configuration
+- [ ] Setting for which fields to use for class stats (label, color, model)
+- [ ] Store in dataset settings
+
+### 14.6 API Endpoints
+```python
+GET  /api/dataset/stats                  # Get computed statistics
+GET  /api/dataset/metadata               # Get metadata
+POST /api/dataset/metadata               # Update metadata
+POST /api/dataset/settings               # Update settings (class_stats_fields, etc.)
+```
+
+**Deliverable:** Complete metadata panel with statistics
+
+### README Increment (Phase 14)
+
+```markdown
+## Testing Phase 14
+
+### Test 14.1: Statistics Display
+- [ ] Activate dataset with train/test/valid subdirs
+- [ ] Verify total count shown
+- [ ] Verify breakdown by subfolder
+- [ ] Verify class counts by label
+
+### Test 14.2: Metadata Editing
+- [ ] Edit name field → verify saves
+- [ ] Change quality dropdown → verify saves
+- [ ] Set verdict to "revise" → verify saves
+- [ ] Check `.dataset.json` contains metadata
+
+### Test 14.3: Panel Collapse
+- [ ] Click collapse button → panel collapses
+- [ ] Click expand → panel expands
+- [ ] Data persists across collapse/expand
+```
+
+---
+
+## Phase 15: Directory Operations (v2.0)
+
+### Overview
+Add directory management: create, delete, move, rename directories.
+
+### 15.1 Create Directory
+- [ ] "New Folder" button in directory panel
+- [ ] Prompt for folder name
+- [ ] Create in currently selected directory
+- [ ] Validate name (no special chars, etc.)
+- [ ] Refresh tree after creation
+
+### 15.2 Delete Directory
+- [ ] "Delete" button (with confirmation)
+- [ ] Move to system trash if possible, else permanent delete
+- [ ] Cannot delete non-empty dirs without confirmation
+- [ ] Cannot delete dataset root while active
+- [ ] Refresh tree after deletion
+
+### 15.3 Move Directory
+- [ ] "Move" button opens modal
+- [ ] Select destination from tree
+- [ ] Move directory with all contents
+- [ ] Update any paths in `.dataset.json` if needed
+- [ ] Refresh tree after move
+
+### 15.4 Rename Directory
+- [ ] "Rename" option (right-click or button)
+- [ ] Inline edit or modal prompt
+- [ ] Validate new name
+- [ ] Update `.dataset.json` if renamed
+- [ ] Refresh tree after rename
+
+### 15.5 Safety
+- [ ] Path validation (stay within base path)
+- [ ] Confirmation for destructive operations
+- [ ] Cannot operate on dataset root while active (except rename metadata)
+- [ ] Error handling with user feedback
+
+### 15.6 API Endpoints
+```python
+POST /api/filesystem/mkdir               # Create directory
+DELETE /api/filesystem/rmdir             # Delete directory
+POST /api/filesystem/move                # Move directory
+POST /api/filesystem/rename              # Rename directory
+```
+
+**Deliverable:** Full directory management capabilities
+
+### README Increment (Phase 15)
+
+```markdown
+## Testing Phase 15
+
+### Test 15.1: Create Directory
+- [ ] Click "New Folder"
+- [ ] Enter name → verify created
+- [ ] Verify appears in tree
+
+### Test 15.2: Delete Directory
+- [ ] Select empty directory
+- [ ] Click delete → confirm → verify deleted
+- [ ] Try delete non-empty → verify warning
+
+### Test 15.3: Move Directory
+- [ ] Select directory
+- [ ] Click move → select destination
+- [ ] Verify moved with contents
+
+### Test 15.4: Rename Directory
+- [ ] Select directory
+- [ ] Rename → verify name changed
+- [ ] If was dataset, verify metadata updated
+```
+
+---
+
+See specs for detailed implementation:
+- **[spec_phase12_filesystem_browser.md](specs/spec_phase12_filesystem_browser.md)**
+- **[spec_phase13_dataset_activation.md](specs/spec_phase13_dataset_activation.md)**
+- **[spec_phase14_dataset_metadata.md](specs/spec_phase14_dataset_metadata.md)**
+- **[spec_phase15_directory_operations.md](specs/spec_phase15_directory_operations.md)**
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Errors:
+1. OK! I can't open the imagens
+2. The labels are not being changed when I press Q. I prefer to use the numbers (from 1 to n) that change the quality image. I hover the image and pressn the number and it change the quality
+
+
+1. The direction must to be in the view dropdown;
+2. I want a new set of labels aside quality
+3. I want a color for each cycle, and a differente view for each one
+4. Create a convetion to the dataset (all the vehicles labeled, as an example)

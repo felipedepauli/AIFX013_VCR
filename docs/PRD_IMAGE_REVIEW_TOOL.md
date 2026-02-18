@@ -18,7 +18,9 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 | Version | Status | Date |
 |---------|--------|------|
 | v1.0 | ✅ Complete | Feb 2026 |
-| v1.1 (Filters) | 🔄 In Progress | Feb 2026 |
+| v1.1 (Filters) | ✅ Complete | Feb 2026 |
+| v1.2 (Vehicle Direction) | ✅ Complete | Feb 2026 |
+| v2.0 (Dataset Management) | 🔄 In Progress (93%) | Feb 2026 |
 
 ---
 
@@ -34,6 +36,7 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 | FR-01.4 | When images are removed, remaining images shift to fill gaps | P0 | ✅ |
 | FR-01.5 | Lazy loading for performance (load visible + buffer) | P1 | ✅ |
 | FR-01.6 | Pagination controls (Previous/Next page) | P0 | ✅ |
+| FR-01.7 | **BONUS:** Custom NxM grid size with modal | P2 | ✅ |
 
 ### FR-02: Label Overlay on Images ✅
 
@@ -92,7 +95,7 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 | FR-06.5 | Multiple flags from each category can be applied | P0 | ✅ |
 | FR-06.6 | Applied flags displayed at bottom of image (color-coded by type) | P0 | ✅ |
 | FR-06.7 | "Flag Selected" bulk action to apply flags to all selected | P1 | ✅ |
-| FR-06.8 | Filter view by flag (show only images with specific flag) | P2 | 🔄 Phase 10 |
+| FR-06.8 | Filter view by flag (show only images with specific flag) | P2 | ✅ |
 | FR-06.9 | Flags stored in project JSON (not image JSON) | P0 | ✅ |
 | FR-06.10 | If flag not in project JSON, apply defaults from startup | P0 | ✅ |
 
@@ -146,21 +149,88 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 | FR-10.7 | No confirmation required for edits | P0 | ✅ |
 | FR-10.8 | Visual feedback on successful save | P1 | ✅ |
 
-### FR-11: Filter Panel (v1.1) 🔄
+### FR-11: Filter Panel (v1.1) ✅
 
 | ID | Requirement | Priority | Status |
 |----|-------------|----------|--------|
-| FR-11.1 | Collapsible left sidebar filter panel | P0 | 🔄 |
-| FR-11.2 | Filter by label values (color, brand, model, type, etc.) | P0 | 🔄 |
-| FR-11.3 | Filter by quality flags | P0 | 🔄 |
-| FR-11.4 | Filter by perspective flags | P0 | 🔄 |
-| FR-11.5 | Multiple filters can be combined (AND logic) | P0 | 🔄 |
-| FR-11.6 | Active filters shown as removable chips | P0 | 🔄 |
-| FR-11.7 | "Clear All Filters" button | P0 | 🔄 |
-| FR-11.8 | Real-time filter count (show matching images) | P1 | 🔄 |
-| FR-11.9 | Filter state persisted in session | P1 | 🔄 |
-| FR-11.10 | Search/filter within filter options | P2 | 🔄 |
-| FR-11.11 | Toggle sidebar visibility with keyboard shortcut | P1 | 🔄 |
+| FR-11.1 | Collapsible left sidebar filter panel | P0 | ✅ |
+| FR-11.2 | Filter by label values (color, brand, model, type, etc.) | P0 | ✅ |
+| FR-11.3 | Filter by quality flags | P0 | ✅ |
+| FR-11.4 | Filter by perspective flags | P0 | ✅ |
+| FR-11.5 | Multiple filters can be combined (AND logic) | P0 | ✅ |
+| FR-11.6 | Active filters shown as removable chips | P0 | ✅ |
+| FR-11.7 | "Clear All Filters" button | P0 | ✅ |
+| FR-11.8 | Real-time filter count (show matching images) | P1 | ✅ |
+| FR-11.9 | Filter state persisted in session | P1 | ✅ |
+| FR-11.10 | Search/filter within filter options | P2 | ✅ |
+| FR-11.11 | Toggle sidebar visibility with keyboard shortcut | P1 | ✅ |
+
+### FR-12: Vehicle Direction Flag (v1.2) ✅
+
+| ID | Requirement | Priority | Status |
+|----|-------------|----------|--------|
+| FR-12.1 | Binary "direction" flag per vehicle object: `front` or `back` | P0 | ✅ |
+| FR-12.2 | Default value is `front` when field is missing | P0 | ✅ |
+| FR-12.3 | Display direction indicator on each vehicle bounding box | P0 | ✅ |
+| FR-12.4 | Click on indicator toggles between `front` ↔ `back` | P0 | ✅ |
+| FR-12.5 | Direction stored in label JSON file (per-vehicle, not per-image) | P0 | ✅ |
+| FR-12.6 | Visual distinction: arrow pointing toward camera (front) or away (back) | P1 | ✅ |
+| FR-12.7 | Filter by direction in filter panel | P1 | ✅ |
+| FR-12.8 | Bulk set direction for selected images (all vehicles) | P2 | ✅ |
+
+### FR-13: File System Browser (v2.0) �
+
+| ID | Requirement | Priority | Status |
+|----|-------------|----------|--------|
+| FR-13.1 | Collapsible left panel showing directory tree (folders only, no files) | P0 | ✅ |
+| FR-13.2 | Configurable base path to restrict navigation scope | P0 | ✅ |
+| FR-13.3 | Single-click to select directory, double-click to navigate into | P0 | ✅ |
+| FR-13.4 | Expand/collapse folder nodes in tree view | P0 | ✅ |
+| FR-13.5 | Visual folder icons with indentation for hierarchy | P1 | ✅ |
+| FR-13.6 | Show current path breadcrumb in footer | P1 | ❌ |
+| FR-13.7 | "Recent Datasets" dropdown for quick switching | P1 | ❌ |
+
+### FR-14: Directory Operations (v2.0) ❌
+
+| ID | Requirement | Priority | Status |
+|----|-------------|----------|--------|
+| FR-14.1 | Create new directory within current location | P0 | ❌ |
+| FR-14.2 | Delete directory (with confirmation, moves to trash or permanent) | P0 | ❌ |
+| FR-14.3 | Move directory to different location (drag-drop or modal) | P1 | ❌ |
+| FR-14.4 | Rename directory | P1 | ❌ |
+| FR-14.5 | Path validation to prevent invalid names | P0 | ❌ |
+| FR-14.6 | Confirmation dialog for destructive operations | P0 | ❌ |
+
+### FR-15: Dataset Activation System (v2.0) ✅
+
+| ID | Requirement | Priority | Status |
+|----|-------------|----------|--------|
+| FR-15.1 | "Activate Dataset" button marks directory as active dataset root | P0 | ✅ |
+| FR-15.2 | Display mode toggle: Direct (only this folder) or Recursive (include subdirs) | P0 | ✅ |
+| FR-15.3 | Default display mode is "Direct" | P0 | ✅ |
+| FR-15.4 | Grid shows images only after dataset is activated | P0 | ✅ |
+| FR-15.5 | Double-click subdirectory navigates into it (working dir changes, dataset stays) | P0 | ✅ |
+| FR-15.6 | Subdirectories inherit parent dataset settings until deactivated | P0 | ✅ |
+| FR-15.7 | "Deactivate Dataset" to end current session | P0 | ✅ |
+| FR-15.8 | Settings stored in `.dataset.json` at dataset root | P0 | ✅ |
+| FR-15.9 | Each dataset has its own metadata, settings, and image flags | P0 | ✅ |
+
+### FR-16: Dataset Metadata Panel (v2.0) ✅
+
+| ID | Requirement | Priority | Status |
+|----|-------------|----------|--------|
+| FR-16.1 | Collapsible right panel for dataset information | P0 | ✅ |
+| FR-16.2 | **Statistics (computed):** Total images (recursive), images per subfolder | P0 | ✅ |
+| FR-16.3 | **Statistics:** Samples per class (configurable: label, color, model) | P0 | ✅ |
+| FR-16.4 | **Editable:** Name (auto-filled from directory name) | P0 | ✅ |
+| FR-16.5 | **Editable:** Description (textarea for dataset content summary) | P0 | ✅ |
+| FR-16.6 | **Editable:** Camera View (multi-select: frontal, traseira, panorâmica, closeup, super-panorâmica) | P0 | ✅ |
+| FR-16.7 | **Editable:** Quality (select: poor, fair, good, excellent) | P0 | ✅ |
+| FR-16.8 | **Editable:** Verdict (select: keep ✅, revise 🔄, remove ❌) | P0 | ✅ |
+| FR-16.9 | **Editable:** Cycle (select: first, second, third, fourth, fifth) | P0 | ✅ |
+| FR-16.10 | **Editable:** Notes (textarea for additional observations) | P1 | ✅ |
+| FR-16.11 | Auto-save metadata changes to `.dataset.json` | P0 | ✅ |
+| FR-16.12 | Activate button placed in this panel | P0 | ✅ |
 
 ---
 
@@ -235,14 +305,119 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
     "label": "car",
     "type": "auto",
     "sub_type": "au - sedan compacto",
-    "lp_coords": ""
+    "lp_coords": "",
+    "direction": "front"
   }
 ]
 ```
 
+#### Direction Field (v1.2)
+
+| Value | Meaning | Visual |
+|-------|---------|--------|
+| `front` | Vehicle facing camera (coming toward) | ▼ Arrow toward viewer |
+| `back` | Vehicle facing away (going away) | ▲ Arrow away from viewer |
+
+**Note:** If `direction` field is missing, default is `front`.
+
+### Dataset JSON Schema (v2.0)
+
+Stored as `.dataset.json` at the dataset root directory:
+
+```json
+{
+  "version": "2.0",
+  "type": "dataset",
+  "name": "vehicle_colors_v4",
+  "root_path": "/home/pauli/pdi_datasets/vehicle_colors_v4",
+  "created": "2026-02-13T10:00:00",
+  "updated": "2026-02-13T15:30:00",
+  "metadata": {
+    "description": "Vehicle color classification dataset with day/night, multiple camera views",
+    "camera_view": ["frontal", "panorâmica"],
+    "quality": "good",
+    "verdict": "keep",
+    "cycle": "second",
+    "notes": "Ready for training. Cleanup complete."
+  },
+  "settings": {
+    "display_mode": "direct",
+    "class_stats_fields": ["label", "color", "model"],
+    "skip_delete_confirmation": false,
+    "visible_labels": ["color", "brand", "model", "type"],
+    "quality_flags": ["bin", "review", "ok", "move"],
+    "perspective_flags": ["close-up-day", "close-up-night", "pan-day", "pan-night", "super_pan_day", "super_pan_night", "cropped-day", "cropped-night"],
+    "default_quality_flag": "review",
+    "default_perspective_flag": null
+  },
+  "image_flags": {
+    "train/000001_ABC123.jpg": {
+      "quality_flags": ["ok"],
+      "perspective_flags": ["pan-day"]
+    },
+    "test/000002_XYZ789.jpg": {
+      "quality_flags": ["review"],
+      "perspective_flags": ["close-up-day"]
+    }
+  }
+}
+```
+
+#### Dataset Metadata Fields (v2.0)
+
+| Field | Type | Options | Description |
+|-------|------|---------|-------------|
+| `name` | string | - | Display name (auto-filled from directory) |
+| `description` | text | - | Brief description of dataset contents |
+| `camera_view` | multi-select | frontal, traseira, panorâmica, closeup, super-panorâmica | Camera perspective(s) |
+| `quality` | select | poor, fair, good, excellent | Overall dataset quality |
+| `verdict` | select | keep, revise, remove | Action decision |
+| `cycle` | select | first, second, third, fourth, fifth | Review iteration |
+| `notes` | text | - | Additional observations |
+
 ---
 
-## User Interface Mockup
+## User Interface Mockup (v2.0)
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ 🖼️ Dataset Review Tool                [2x2] [3x3] [5x5] [6x6]  [?] ⚙️               │
+├─────────────────┬────────────────────────────────────────────┬───────────────────────┤
+│ ◀ DIRECTORIES   │                                            │ DATASET INFO ▶       │
+│                 │   ┌─────────┐  ┌─────────┐  ┌─────────┐   │                       │
+│ 📁 pdi_datasets │   │  img1   │  │  img2   │  │  img3   │   │ 📊 Statistics         │
+│  ├📁 train/     │   │  ▼      │  │  ▼      │  │  ▲      │   │ ─────────────────     │
+│  │  ├📁 car/    │   └─────────┘  └─────────┘  └─────────┘   │ Total: 1,234 images   │
+│  │  └📁 truck/  │                                            │   train: 800          │
+│  ├📁 test/      │   ┌─────────┐  ┌─────────┐  ┌─────────┐   │   test: 234           │
+│  └📁 valid/     │   │  img4   │  │  img5   │  │  img6   │   │   valid: 200          │
+│                 │   └─────────┘  └─────────┘  └─────────┘   │                       │
+│ ─────────────── │                                            │ Classes (label):      │
+│ [+ New Folder]  │                                            │   car: 890            │
+│ [🗑️ Delete]     │                                            │   truck: 234          │
+│ [📦 Move]       │                                            │   moto: 110           │
+│                 │                                            │                       │
+│                 │                                            │ 📝 Metadata           │
+│                 │                                            │ ─────────────────     │
+│                 │                                            │ Name: [vehicle_v4  ]  │
+│                 │                                            │ Description:          │
+│                 │                                            │ [_________________ ]  │
+│                 │                                            │ Camera: [frontal ▼]   │
+│                 │                                            │ Quality: [good ▼]     │
+│                 │                                            │ Verdict: [keep ▼]     │
+│                 │                                            │ Cycle: [second ▼]     │
+│                 │                                            │ Notes:                │
+│                 │                                            │ [_________________ ]  │
+│                 │                                            │                       │
+│                 │                                            │ [🔄 Activate Dataset] │
+├─────────────────┴────────────────────────────────────────────┴───────────────────────┤
+│ Dataset: /pdi_datasets/vehicle_v4  |  Viewing: /train  |  Mode: [Direct ▼]  | 800 img│
+└──────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## User Interface Mockup (v1.x)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -344,6 +519,9 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 | Accidental deletions | High | Confirmation setting, backup before delete |
 | JSON corruption on edit | Medium | Write to temp file, then rename |
 | Browser memory issues with many images | Medium | Limit loaded images, cleanup unused |
+| Directory operations fail mid-way (v2.0) | High | Atomic operations, rollback on failure |
+| Accidental directory deletion (v2.0) | High | Move to trash first, confirmation dialog |
+| Navigating outside base path (v2.0) | Medium | Strict path validation, configurable base |
 
 ---
 
@@ -353,13 +531,25 @@ Current annotation tools lack efficient batch review capabilities. Reviewers nee
 - Complete batch operations (delete/flag) in under 1 second
 - Zero data loss from accidental operations
 - User satisfaction: reduce review time by 50% vs single-image tools
+- (v2.0) Dataset analysis: review and categorize 10+ datasets per session
+- (v2.0) Quick dataset switching via recent datasets list
 
 ---
 
-## Out of Scope (v1.0)
+## Out of Scope (v1.x)
 
 - Image editing (crop, rotate, adjust)
 - Multi-user collaboration
 - Version history/undo for JSON edits
 - Export to other annotation formats
 - Integration with ML training pipelines
+- Moving individual images between directories
+
+---
+
+## Out of Scope (v2.0)
+
+- Drag-and-drop images between folders
+- Dataset comparison side-by-side
+- Automatic dataset quality scoring
+- Cloud/remote file system support

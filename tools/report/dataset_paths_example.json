@@ -1,0 +1,41 @@
+{
+    "paths": [
+        "/data/pdi_datasets/data/vehicle_od/virtual_loop/cet/veiculos_grandes/01/",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/v_00/train",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/v_00/valid",
+        "/data/pdi_datasets/data/vehicle_attributes/bmc/prf/day_v0/train",
+        "/data/pdi_datasets/data/vehicle_attributes/bmc/prf/day_v0/valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/freeflow_ccr/day/2024_top_0/train",
+        "/data/pdi_datasets/data/vehicle_od/classifier/freeflow_ccr/day/2024_top_0/valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/itscam600/panoramic/itscampro_panoramic_june_2023_train_set/",
+        "/data/pdi_datasets/data/db/virtual_loop/dataprom/2017/12/15/08/",
+        "/data/pdi_datasets/data/db/virtual_loop/dataprom/2017/12/13/22/",
+        "/data/pdi_datasets/data/db/virtual_loop/cet/10_man_cet/",
+        "/data/pdi_datasets/data/db/virtual_loop/cet/10_noite_cet/",
+        "/data/pdi_datasets/data/db/virtual_loop/cet/10_tarde_cet/",
+        "/data/pdi_datasets/data/db/virtual_loop/cet/pompeia_sul/",
+        "/data/pdi_datasets/data/db/virtual_loop/meng/157_noite/",
+        "/data/pdi_datasets/data/db/virtual_loop/meng/157_tarde1/",
+        "/data/pdi_datasets/data/db/virtual_loop/meng/157_tarde2/",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/ausec_day/train/",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/15_day_train/moto/",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/16_day_train/moto/",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/multiway_15_day_others_000",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/multiway_15_day_others_001",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/multiway_15_day_others_red_000",
+        "/data/pdi_datasets/data/db/classifier/panoramic_day/labeled/multiway/multiway_16_day_others_000_train",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/SAT-CSG/old_format/Cycle1/train_valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/SAT-CSG/old_format/Cycle2/train_valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/SAT-CSG/old_format/Cycle3/train_valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/3mpx_v1/old_format/train_valid",
+        "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/3mpx_v2_late_afternoon/old_format/train_valid",
+        {
+            "path": "/data/pdi_datasets/data/panoramic/extra/day/old_format/dataprom__0__train_valid",
+            "percentage": 1.0
+        },
+        {
+            "path": "/data/pdi_datasets/data/panoramic/extra/day/old_format/dataprom__0__less_representative",
+            "percentage": 1.0
+        }
+    ]
+}

@@ -342,6 +342,14 @@ input[type="radio"], input[type="checkbox"] {
     min-height: 100vh;
 }
 
+/* Content Wrapper - holds sidebar, grid, and metadata panel */
+.content-wrapper {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+}
+
 header {
     display: flex;
     justify-content: space-between;
@@ -1700,10 +1708,23 @@ footer {
     max-height: 80vh;
     object-fit: contain;
     border-radius: 4px;
+    -webkit-user-drag: none;
+    user-drag: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .modal-label-overlay {
     pointer-events: none;
+}
+
+/* Enable pointer events in edit mode */
+.modal-label-overlay.edit-mode {
+    pointer-events: auto;
+}
+
+.modal-label-overlay .bbox.editing {
+    pointer-events: auto;
 }
 
 .modal-label-overlay .label-line {
@@ -2367,27 +2388,27 @@ footer {
 
 /* Filter Panel - Left Sidebar */
 .filter-panel {
-    position: fixed;
-    left: 0;
-    top: 60px;
-    bottom: 60px;
     width: 280px;
+    min-width: 280px;
     background: rgba(22, 33, 62, 0.98);
     backdrop-filter: blur(10px);
     border-right: 1px solid rgba(255, 255, 255, 0.1);
     display: flex;
     flex-direction: column;
-    transform: translateX(0);
-    transition: transform 0.3s ease;
+    transition: width 0.3s ease, min-width 0.3s ease;
     z-index: 100;
     box-shadow: 4px 0 20px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
 }
 
 .filter-panel.collapsed {
-    transform: translateX(-240px);
+    width: 40px;
+    min-width: 40px;
 }
 
-.filter-panel.collapsed .filter-panel-content {
+.filter-panel.collapsed .filter-panel-content,
+.filter-panel.collapsed .sidebar-tabs,
+.filter-panel.collapsed .sidebar-tab-content {
     opacity: 0;
     pointer-events: none;
 }
@@ -2396,17 +2417,13 @@ footer {
     transform: rotate(180deg);
 }
 
-/* Main content shifts when panel is open */
+/* Main content area - flex grows to fill space */
 .main-content {
-    margin-left: 280px;
-    transition: margin-left 0.3s ease;
     flex: 1;
     display: flex;
     flex-direction: column;
-}
-
-.main-content.panel-collapsed {
-    margin-left: 40px;
+    min-width: 0;
+    overflow: auto;
 }
 
 /* Panel Header */
@@ -2827,3 +2844,784 @@ footer {
 .empty-state button:hover {
     background: rgba(74, 105, 189, 0.3);
 }
+
+/* ============================================
+   Sidebar Tabs (Phase 2.0)
+   ============================================ */
+
+.sidebar-tabs {
+    display: flex;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.2);
+    flex-shrink: 0;
+}
+
+.sidebar-tab {
+    flex: 1;
+    padding: 12px 8px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    color: #888;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+}
+
+.sidebar-tab:hover {
+    color: #ccc;
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-tab.active {
+    color: #4a69bd;
+    border-bottom-color: #4a69bd;
+    background: rgba(74, 105, 189, 0.1);
+}
+
+.sidebar-tab-content {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-tab-content.active {
+    display: flex;
+}
+
+/* Adjust filter panel to work with tabs */
+.filter-panel .filter-panel-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 12px 16px;
+}
+
+/* Collapse button repositioned */
+.filter-panel > .filter-collapse-btn {
+    position: absolute;
+    right: -16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 48px;
+    border-radius: 0 8px 8px 0;
+    z-index: 10;
+}
+
+.filter-panel.collapsed > .filter-collapse-btn {
+    right: -32px;
+}
+
+/* ============================================
+   Directory Tree
+   ============================================ */
+
+.directory-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    gap: 10px;
+}
+
+.directory-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    color: #888;
+    flex: 1;
+}
+
+.directory-toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.directory-toolbar .btn-icon {
+    padding: 6px 10px;
+    background: rgba(74, 105, 189, 0.15);
+    border: 1px solid rgba(74, 105, 189, 0.3);
+    border-radius: 6px;
+    color: #4a69bd;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.directory-toolbar .btn-icon:hover {
+    background: rgba(74, 105, 189, 0.3);
+}
+
+.directory-tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    font-size: 13px;
+}
+
+.dir-node {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    margin: 1px 8px;
+    transition: background 0.15s;
+}
+
+.dir-node:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.dir-node.selected {
+    background: rgba(74, 105, 189, 0.2);
+    color: #4a69bd;
+}
+
+.dir-expand {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #666;
+    cursor: pointer;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.dir-expand:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+}
+
+.dir-icon {
+    margin: 0 6px;
+    font-size: 14px;
+}
+
+.dir-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dir-children {
+    margin-left: 0;
+}
+
+.dir-children.collapsed {
+    display: none;
+}
+
+.dir-loading {
+    padding: 20px;
+    text-align: center;
+    color: #666;
+}
+
+.directory-actions {
+    padding: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.directory-actions .btn-primary {
+    width: 100%;
+    padding: 12px;
+    background: linear-gradient(135deg, #4a69bd, #3a5998);
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.directory-actions .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a79cd, #4a69a8);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 105, 189, 0.4);
+}
+
+.directory-actions .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ============================================
+   Directory Info in Header
+   ============================================ */
+
+.directory-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 12px;
+    background: rgba(74, 105, 189, 0.15);
+    border-radius: 6px;
+    margin-left: 16px;
+}
+
+.directory-info.hidden {
+    display: none;
+}
+
+.directory-path {
+    font-size: 12px;
+    color: #aaa;
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mode-select {
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #fff;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.mode-select:focus {
+    outline: none;
+    border-color: #4a69bd;
+}
+
+/* ==========================================
+   Metadata Panel (Right Sidebar)
+   ========================================== */
+
+.metadata-panel {
+    width: 300px;
+    min-width: 300px;
+    background: #1e1e2e;
+    border-left: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s ease, min-width 0.3s ease;
+    overflow: hidden;
+}
+
+.metadata-panel.collapsed {
+    width: 40px;
+    min-width: 40px;
+}
+
+.metadata-panel.collapsed .metadata-panel-content {
+    display: none;
+}
+
+.metadata-panel.collapsed .panel-title {
+    display: none;
+}
+
+.metadata-panel-header {
+    padding: 12px 16px;
+    background: #252536;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #333;
+    min-height: 48px;
+}
+
+.metadata-panel.collapsed .metadata-panel-header {
+    justify-content: center;
+    padding: 12px 8px;
+}
+
+.panel-collapse-btn {
+    background: none;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.panel-collapse-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.panel-title {
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: #888;
+}
+
+.metadata-panel-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+/* Panel Sections */
+.panel-section {
+    margin-bottom: 8px;
+    background: #252536;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.section-header:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.section-icon {
+    font-size: 14px;
+}
+
+.section-title {
+    flex: 1;
+    font-weight: 500;
+    font-size: 13px;
+    color: #ccc;
+}
+
+.section-toggle {
+    color: #666;
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+
+.panel-section.collapsed .section-toggle {
+    transform: rotate(-90deg);
+}
+
+.panel-section.collapsed .section-content {
+    display: none;
+}
+
+.section-content {
+    padding: 0 12px 12px;
+}
+
+/* Statistics Display */
+.stats-field {
+    margin-bottom: 16px;
+}
+
+.stats-field-name {
+    font-weight: 600;
+    color: #4a69bd;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+}
+
+.stats-items {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stats-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.stats-label {
+    width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #ccc;
+}
+
+.stats-bar-container {
+    flex: 1;
+    height: 8px;
+    background: #333;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.stats-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4a69bd, #5a79cd);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.stats-count {
+    width: 40px;
+    text-align: right;
+    color: #888;
+    font-size: 11px;
+}
+
+.no-stats {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-size: 12px;
+}
+
+/* Metadata Form */
+.metadata-form {
+    padding: 4px 0;
+}
+
+.metadata-form .form-field {
+    margin-bottom: 16px;
+}
+
+.metadata-form .form-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    color: #888;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.metadata-form input[type="text"],
+.metadata-form textarea,
+.metadata-form select {
+    width: 100%;
+    padding: 8px 10px;
+    background: #1e1e2e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #eee;
+    font-size: 13px;
+    font-family: inherit;
+}
+
+.metadata-form input[type="text"]:focus,
+.metadata-form textarea:focus,
+.metadata-form select:focus {
+    outline: none;
+    border-color: #4a69bd;
+}
+
+.metadata-form input.readonly {
+    background: #1a1a28;
+    color: #888;
+    cursor: not-allowed;
+}
+
+.metadata-form textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.metadata-form select {
+    cursor: pointer;
+}
+
+/* Checkbox Group */
+.checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.checkbox-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #ccc;
+}
+
+.checkbox-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #4a69bd;
+    cursor: pointer;
+}
+
+.checkbox-option:hover {
+    color: #eee;
+}
+
+/* Form Actions */
+.form-actions {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #333;
+}
+
+.save-btn {
+    width: 100%;
+    padding: 10px;
+    background: #4a69bd;
+    border: none;
+    border-radius: 4px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.save-btn:hover {
+    background: #5a79cd;
+}
+
+.save-btn:disabled {
+    background: #333;
+    color: #666;
+    cursor: not-allowed;
+}
+
+/* Stats Config */
+.stats-config-form {
+    padding: 4px 0;
+}
+
+.stats-config-form > label {
+    display: block;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #888;
+}
+
+.config-save-btn {
+    margin-top: 12px;
+    padding: 8px 16px;
+    background: #333;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #eee;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.config-save-btn:hover {
+    background: #444;
+}
+
+/* No Dataset Message */
+.no-dataset-message {
+    text-align: center;
+    padding: 30px 20px;
+    color: #666;
+}
+
+.no-dataset-message .message-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+}
+
+.no-dataset-message p {
+    font-size: 12px;
+    margin: 0;
+}
+
+/* ============================================
+   Bounding Box Editor
+   ============================================ */
+
+.bbox-editor-section {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #3a3a3a;
+}
+
+.bbox-editor-section h4 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #ddd;
+}
+
+.btn-add-object {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #27ae60;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.btn-add-object:hover {
+    background: #2ecc71;
+}
+
+.btn-edit-bbox {
+    width: 100%;
+    padding: 10px;
+    background: #2a5a8a;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.btn-edit-bbox:hover {
+    background: #3a6a9a;
+}
+
+.btn-edit-bbox:disabled {
+    background: #444;
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.bbox-toolbar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.bbox-toolbar button {
+    flex: 1;
+    padding: 8px;
+    background: #3a3a3a;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.2s;
+}
+
+.bbox-toolbar button:hover:not(:disabled) {
+    background: #4a4a4a;
+}
+
+.bbox-toolbar button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.bbox-toolbar button.active {
+    background: #2a5a8a;
+    border-color: #3a6a9a;
+}
+
+.bbox-hint {
+    font-size: 12px;
+    color: #888;
+    margin: 8px 0;
+    font-style: italic;
+}
+
+.bbox-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.bbox-actions .btn-save {
+    flex: 2;
+    padding: 10px;
+    background: #27ae60;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.bbox-actions .btn-save:hover {
+    background: #2ecc71;
+}
+
+.bbox-actions .btn-cancel {
+    flex: 1;
+    padding: 10px;
+    background: #555;
+    border: none;
+    border-radius: 4px;
+    color: white;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.bbox-actions .btn-cancel:hover {
+    background: #666;
+}
+
+/* Bbox Handles (Edit Mode) */
+.bbox.editing {
+    cursor: move;
+}
+
+.bbox.editing.selected {
+    border-color: #e74c3c !important;
+    border-width: 3px;
+    box-shadow: 0 0 10px rgba(231, 76, 60, 0.5);
+}
+
+.bbox-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border: 2px solid #3498db;
+    border-radius: 50%;
+    z-index: 10;
+    pointer-events: auto;
+}
+
+.bbox-handle:hover {
+    background: #3498db;
+}
+
+.bbox-handle.nw { top: -6px; left: -6px; cursor: nwse-resize; }
+.bbox-handle.n  { top: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.bbox-handle.ne { top: -6px; right: -6px; cursor: nesw-resize; }
+.bbox-handle.e  { top: 50%; margin-top: -6px; right: -6px; cursor: ew-resize; }
+.bbox-handle.se { bottom: -6px; right: -6px; cursor: nwse-resize; }
+.bbox-handle.s  { bottom: -6px; left: 50%; margin-left: -6px; cursor: ns-resize; }
+.bbox-handle.sw { bottom: -6px; left: -6px; cursor: nesw-resize; }
+.bbox-handle.w  { top: 50%; margin-top: -6px; left: -6px; cursor: ew-resize; }
+
+/* Drawing mode */
+.modal-image-container.drawing-mode {
+    cursor: crosshair;
+}
+
+.draw-preview {
+    position: absolute;
+    border: 2px dashed #e74c3c;
+    background: rgba(231, 76, 60, 0.1);
+    pointer-events: none;
+    z-index: 100;
+}
+
+/* Disable label inputs during bbox edit */
+.label-editors.disabled input {
+    pointer-events: none;
+    opacity: 0.5;
+}
+

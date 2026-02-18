@@ -9,10 +9,16 @@ from functools import lru_cache
 import json
 import os
 import re
+import hashlib
 from datetime import datetime
 from PIL import Image
 import io
 import base64
+
+
+def stable_hash(s: str) -> int:
+    """Generate a stable hash that is consistent across Python sessions."""
+    return int(hashlib.md5(s.encode()).hexdigest(), 16) % (10**9)
 
 app = Flask(__name__)
 
@@ -596,6 +602,13 @@ def apply_filters_to_images(images, filters, directory):
 @app.route('/api/images', methods=['GET'])
 def get_images():
     """Get paginated list of images for current grid page."""
+    
+    # Check for directory mode (Phase 2.0)
+    directory = request.args.get('directory')
+    if directory:
+        return get_images_from_directory(directory, request.args)
+    
+    # Original project-based mode
     if not project_manager.project_data:
         return jsonify({
             "success": False,
@@ -1309,17 +1322,28 @@ def apply_flag_to_all():
 @app.route('/api/vehicle/<int:seq_id>/<int:vehicle_idx>/direction', methods=['POST'])
 def toggle_vehicle_direction(seq_id: int, vehicle_idx: int):
     """Toggle direction flag for a specific vehicle in an image."""
-    if not project_manager.project_data:
-        return jsonify({'success': False, 'error': 'No project loaded'}), 400
-    
     data = request.get_json()
     new_direction = data.get('direction')
+    directory_path = data.get('directory')  # For browse mode
     
     if new_direction not in ('front', 'back'):
         return jsonify({'success': False, 'error': "Invalid direction. Must be 'front' or 'back'"}), 400
     
-    # Find the image
-    image = find_image_by_seq_id(seq_id)
+    # Determine which mode we're in (project vs directory browse)
+    if directory_path:
+        # Directory browse mode - search recursively
+        directory = Path(directory_path)
+        image = find_image_in_directory_by_seq(directory, seq_id)
+        if image:
+            # Get directory from found image path
+            directory = Path(image['path']).parent
+    elif project_manager.project_data:
+        # Project mode
+        directory = Path(project_manager.project_data['directory'])
+        image = find_image_by_seq_id(seq_id)
+    else:
+        return jsonify({'success': False, 'error': 'No project loaded and no directory specified'}), 400
+    
     if not image:
         return jsonify({'success': False, 'error': 'Image not found'}), 404
     
@@ -1327,7 +1351,6 @@ def toggle_vehicle_direction(seq_id: int, vehicle_idx: int):
         return jsonify({'success': False, 'error': 'No label file for this image'}), 404
     
     # Load label JSON
-    directory = Path(project_manager.project_data['directory'])
     json_path = directory / image['json_filename']
     
     if not json_path.exists():
@@ -1360,6 +1383,25 @@ def toggle_vehicle_direction(seq_id: int, vehicle_idx: int):
         })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def find_image_in_directory_by_seq(directory: Path, seq_id: int) -> dict:
+    """Find image in a directory by sequence ID (stable hash of path).
+    Searches recursively since images may be in subdirectories.
+    """
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    
+    # Search recursively
+    for f in directory.rglob('*'):
+        if f.is_file() and f.suffix.lower() in image_extensions:
+            computed_hash = stable_hash(str(f))
+            if computed_hash == seq_id:
+                return {
+                    'filename': f.name,
+                    'path': str(f),
+                    'json_filename': f.with_suffix('.json').name if f.with_suffix('.json').exists() else None
+                }
+    return None
 
 
 @app.route('/api/direction/apply-to-all', methods=['POST'])
@@ -1432,7 +1474,875 @@ def apply_direction_to_all():
     })
 
 
+# ============== Directory Browsing Routes (Phase 2.0) ==============
+
+# Base path for directory browsing - can be configured
+BROWSE_BASE_PATH = Path('/home/pauli/temp/AIFX013_VCR')
+
+
+def build_directory_tree(path: Path, depth: int = 2, current_depth: int = 0, expanded_paths: set = None) -> dict:
+    """Build directory tree structure recursively.
+    
+    Args:
+        path: Directory path to scan
+        depth: Base depth to scan
+        current_depth: Current recursion depth
+        expanded_paths: Set of paths that should be expanded regardless of depth
+    """
+    if expanded_paths is None:
+        expanded_paths = set()
+        
+    result = {
+        'name': path.name or str(path),
+        'path': str(path),
+        'has_children': False,
+        'children': []
+    }
+    
+    try:
+        subdirs = sorted([d for d in path.iterdir() if d.is_dir() and not d.name.startswith('.')])
+        result['has_children'] = len(subdirs) > 0
+        
+        # Check if this path is in expanded paths OR within base depth
+        path_str = str(path)
+        should_expand = current_depth < depth or path_str in expanded_paths
+        
+        # Also expand if any child path is in expanded_paths
+        if not should_expand:
+            for exp_path in expanded_paths:
+                if exp_path.startswith(path_str + '/'):
+                    should_expand = True
+                    break
+        
+        if should_expand and subdirs:
+            result['children'] = [
+                build_directory_tree(d, depth, current_depth + 1, expanded_paths) 
+                for d in subdirs
+            ]
+    except PermissionError:
+        pass
+    
+    return result
+
+
+@app.route('/api/browse/tree')
+def browse_tree():
+    """Get directory tree for browsing."""
+    path = request.args.get('path', str(BROWSE_BASE_PATH))
+    depth = request.args.get('depth', 2, type=int)
+    expanded = request.args.get('expanded', '')  # Comma-separated list of expanded paths
+    
+    target = Path(path)
+    if not target.exists() or not target.is_dir():
+        return jsonify({'success': False, 'error': 'Invalid directory'})
+    
+    # Parse expanded paths
+    expanded_paths = set(expanded.split(',')) if expanded else set()
+    
+    tree = build_directory_tree(target, depth, expanded_paths=expanded_paths)
+    
+    return jsonify({
+        'success': True,
+        'data': tree
+    })
+
+
+@app.route('/api/browse/children')
+def browse_children():
+    """Get immediate children of a directory."""
+    path = request.args.get('path')
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'Path required'})
+    
+    target = Path(path)
+    if not target.exists() or not target.is_dir():
+        return jsonify({'success': False, 'error': 'Invalid directory'})
+    
+    try:
+        subdirs = sorted([
+            {'name': d.name, 'path': str(d), 'has_children': any(d.iterdir())}
+            for d in target.iterdir() 
+            if d.is_dir() and not d.name.startswith('.')
+        ], key=lambda x: x['name'])
+    except PermissionError:
+        subdirs = []
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'path': str(target),
+            'directories': subdirs
+        }
+    })
+
+
+@app.route('/api/browse/activate', methods=['POST'])
+def activate_directory():
+    """Mark directory as active dataset, create .dataset.json if needed."""
+    data = request.get_json()
+    path = data.get('path')
+    settings = data.get('settings', {})  # Optional settings to save to dataset
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'Path required'})
+    
+    target = Path(path)
+    if not target.exists() or not target.is_dir():
+        return jsonify({'success': False, 'error': 'Invalid directory'})
+    
+    dataset_file = target / '.dataset.json'
+    
+    # Load existing or create new
+    if dataset_file.exists():
+        try:
+            with open(dataset_file) as f:
+                dataset_data = json.load(f)
+        except:
+            dataset_data = {}
+    else:
+        dataset_data = {}
+    
+    # Set defaults if not present
+    dataset_data.setdefault('name', target.name)
+    dataset_data.setdefault('created_at', datetime.now().isoformat())
+    dataset_data['updated_at'] = datetime.now().isoformat()
+    dataset_data.setdefault('image_flags', {})
+    dataset_data.setdefault('stats_config', {'fields': ['label', 'color', 'model']})
+    
+    # Merge in settings if provided (visible_labels, quality_flags, perspective_flags, etc.)
+    if settings:
+        allowed_settings = ['visible_labels', 'quality_flags', 'perspective_flags', 
+                           'skip_delete_confirmation', 'default_quality_flag', 
+                           'default_perspective_flag']
+        for key in allowed_settings:
+            if key in settings:
+                dataset_data[key] = settings[key]
+    
+    # Save dataset file
+    with open(dataset_file, 'w') as f:
+        json.dump(dataset_data, f, indent=2)
+    
+    # Count images
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    image_count = sum(1 for f in target.iterdir() 
+                     if f.is_file() and f.suffix.lower() in image_extensions)
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'path': str(target),
+            'image_count': image_count,
+            'settings': dataset_data  # Return current settings
+        }
+    })
+
+
+@app.route('/api/dataset/metadata', methods=['GET'])
+def get_dataset_metadata():
+    """Get dataset metadata."""
+    path = request.args.get('path')
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'No path provided'}), 400
+    
+    target = Path(path)
+    dataset_file = target / '.dataset.json'
+    
+    if not dataset_file.exists():
+        return jsonify({'success': False, 'error': 'Dataset not found'}), 404
+    
+    try:
+        with open(dataset_file) as f:
+            metadata = json.load(f)
+        
+        # Ensure name is set
+        if 'name' not in metadata:
+            metadata['name'] = target.name
+        
+        return jsonify({
+            'success': True,
+            'data': metadata
+        })
+    except json.JSONDecodeError:
+        return jsonify({'success': False, 'error': 'Invalid dataset file'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/dataset/metadata', methods=['PUT'])
+def update_dataset_metadata():
+    """Update dataset metadata."""
+    data = request.get_json()
+    path = data.get('path')
+    updates = data.get('metadata', {})
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'No path provided'}), 400
+    
+    target = Path(path)
+    dataset_file = target / '.dataset.json'
+    
+    if not dataset_file.exists():
+        return jsonify({'success': False, 'error': 'Dataset not found'}), 404
+    
+    try:
+        with open(dataset_file) as f:
+            metadata = json.load(f)
+        
+        # Update allowed fields
+        allowed_fields = ['description', 'camera_view', 'quality', 'verdict', 'cycle', 'notes']
+        for field in allowed_fields:
+            if field in updates:
+                metadata[field] = updates[field]
+        
+        metadata['updated_at'] = datetime.now().isoformat()
+        
+        with open(dataset_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'updated_at': metadata['updated_at']
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/dataset/stats-config', methods=['PUT'])
+def update_stats_config():
+    """Update dataset stats configuration."""
+    data = request.get_json()
+    path = data.get('path')
+    fields = data.get('fields', [])
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'No path provided'}), 400
+    
+    if not fields:
+        return jsonify({'success': False, 'error': 'At least one field required'}), 400
+    
+    target = Path(path)
+    dataset_file = target / '.dataset.json'
+    
+    if not dataset_file.exists():
+        return jsonify({'success': False, 'error': 'Dataset not found'}), 404
+    
+    try:
+        with open(dataset_file) as f:
+            metadata = json.load(f)
+        
+        metadata['stats_config'] = {'fields': fields}
+        metadata['updated_at'] = datetime.now().isoformat()
+        
+        with open(dataset_file, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'fields': fields,
+                'updated_at': metadata['updated_at']
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/dataset/stats', methods=['GET'])
+def get_dataset_stats():
+    """Get statistics for a dataset based on configured fields."""
+    path = request.args.get('path')
+    fields_param = request.args.get('fields', 'label,color,model')
+    
+    if not path:
+        return jsonify({'success': False, 'error': 'No path provided'}), 400
+    
+    target = Path(path)
+    if not target.exists() or not target.is_dir():
+        return jsonify({'success': False, 'error': 'Invalid directory'}), 404
+    
+    fields = [f.strip() for f in fields_param.split(',') if f.strip()]
+    
+    # Find all images and their labels
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    
+    stats = {field: {} for field in fields}
+    
+    try:
+        for img_file in target.iterdir():
+            if img_file.is_file() and img_file.suffix.lower() in image_extensions:
+                # Look for associated JSON label file
+                label_file = img_file.with_suffix('.json')
+                if label_file.exists():
+                    try:
+                        with open(label_file) as f:
+                            label_data = json.load(f)
+                        
+                        # Check for objects array (common label format)
+                        objects = label_data.get('objects', label_data.get('annotations', []))
+                        
+                        for obj in objects:
+                            for field in fields:
+                                value = obj.get(field)
+                                if value is not None:
+                                    value_str = str(value)
+                                    stats[field][value_str] = stats[field].get(value_str, 0) + 1
+                        
+                        # Also check top-level fields
+                        for field in fields:
+                            if field in label_data and field not in ['objects', 'annotations']:
+                                value = label_data[field]
+                                if value is not None:
+                                    value_str = str(value)
+                                    stats[field][value_str] = stats[field].get(value_str, 0) + 1
+                    except:
+                        pass
+        
+        # Also include image flags in stats
+        dataset_file = target / '.dataset.json'
+        if dataset_file.exists():
+            try:
+                with open(dataset_file) as f:
+                    dataset_data = json.load(f)
+                image_flags = dataset_data.get('image_flags', {})
+                
+                for img_name, flags in image_flags.items():
+                    for field in fields:
+                        if field in flags:
+                            value = flags[field]
+                            if value is not None:
+                                value_str = str(value)
+                                stats[field][value_str] = stats[field].get(value_str, 0) + 1
+            except:
+                pass
+        
+        # Remove empty fields
+        stats = {k: v for k, v in stats.items() if v}
+        
+        return jsonify({
+            'success': True,
+            'data': stats
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def get_images_from_directory(directory_path: str, args) -> dict:
+    """Load images from directory (directory browsing mode)."""
+    path = Path(directory_path)
+    mode = args.get('mode', 'direct')
+    page = args.get('page', 1, type=int)
+    size = args.get('size', 9, type=int)
+    
+    # Validate size
+    size = max(1, min(100, size))
+    
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    
+    # Find images based on mode
+    if mode == 'recursive':
+        image_files = []
+        for ext in image_extensions:
+            image_files.extend(path.rglob(f'*{ext}'))
+            image_files.extend(path.rglob(f'*{ext.upper()}'))
+    else:
+        image_files = [f for f in path.iterdir() 
+                      if f.is_file() and f.suffix.lower() in image_extensions]
+    
+    # Sort by filename
+    image_files = sorted(set(image_files), key=lambda x: x.name)
+    
+    # Load dataset flags
+    dataset_file = path / '.dataset.json'
+    image_flags = {}
+    if dataset_file.exists():
+        try:
+            with open(dataset_file) as f:
+                dataset_data = json.load(f)
+                image_flags = dataset_data.get('image_flags', {})
+        except:
+            pass
+    
+    # Apply filters if provided
+    filters = {
+        'quality_flags': args.getlist('filter_quality_flags'),
+        'perspective_flags': args.getlist('filter_perspective_flags'),
+        'direction': args.getlist('filter_direction'),
+        'color': args.getlist('filter_color'),
+        'brand': args.getlist('filter_brand'),
+        'model': args.getlist('filter_model'),
+        'label': args.getlist('filter_label'),
+        'type': args.getlist('filter_type'),
+        'sub_type': args.getlist('filter_sub_type')
+    }
+    
+    # Build image list with filtering
+    filtered_images = []
+    for img_path in image_files:
+        img_id = img_path.stem
+        flags = image_flags.get(img_id, {})
+        
+        # Build image dict for filtering
+        img_data = {
+            'filename': img_path.name,
+            'path': str(img_path),
+            'quality_flags': [flags.get('quality_flag')] if flags.get('quality_flag') else [],
+            'perspective_flags': [flags.get('perspective_flag')] if flags.get('perspective_flag') else []
+        }
+        
+        # Load labels from JSON for filtering
+        label_path = img_path.with_suffix('.json')
+        labels = None
+        if label_path.exists():
+            try:
+                with open(label_path) as f:
+                    labels = json.load(f)
+                    if isinstance(labels, list) and len(labels) > 0:
+                        # Use first item for filtering
+                        first = labels[0]
+                        img_data['color'] = str(first.get('color', ''))
+                        img_data['brand'] = str(first.get('brand', ''))
+                        img_data['model'] = str(first.get('model', ''))
+                        img_data['type'] = str(first.get('type', ''))
+                        img_data['sub_type'] = str(first.get('sub_type', ''))
+                        img_data['direction'] = str(first.get('direction', ''))
+            except:
+                pass
+        
+        # Apply filters
+        if should_include_image(img_data, filters):
+            filtered_images.append((img_path, img_data, flags))
+    
+    total_images = len(filtered_images)
+    total_pages = max(1, (total_images + size - 1) // size)
+    
+    # Clamp page to valid range
+    page = max(1, min(page, total_pages))
+    
+    # Get slice for current page
+    start_idx = (page - 1) * size
+    end_idx = start_idx + size
+    page_images = filtered_images[start_idx:end_idx]
+    
+    # Build response (same format as project mode)
+    result = []
+    for img_path, img_data, flags in page_images:
+        thumbnail = None
+        img_width, img_height = 0, 0
+        
+        if img_path.exists():
+            thumbnail = get_cached_thumbnail(str(img_path), size)
+            try:
+                with Image.open(img_path) as pil_img:
+                    img_width, img_height = pil_img.size
+            except:
+                pass
+        
+        # Check for label file
+        label_path = img_path.with_suffix('.json')
+        
+        result.append({
+            'seq_id': stable_hash(str(img_path)),  # Generate stable ID from path
+            'filename': img_path.name,
+            'full_path': str(img_path),
+            'thumbnail': thumbnail,
+            'img_width': img_width,
+            'img_height': img_height,
+            'quality_flags': [flags.get('quality_flag')] if flags.get('quality_flag') else [],
+            'perspective_flags': [flags.get('perspective_flag')] if flags.get('perspective_flag') else [],
+            'has_labels': label_path.exists()
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'images': result,
+            'pagination': {
+                'current_page': page,
+                'total_pages': total_pages,
+                'page_size': size,
+                'total_images': total_images
+            }
+        }
+    })
+
+
+def should_include_image(img_data: dict, filters: dict) -> bool:
+    """Check if image should be included based on filters."""
+    # Check quality flags filter
+    if filters['quality_flags']:
+        img_flags = img_data.get('quality_flags', [])
+        if not any(f in img_flags for f in filters['quality_flags']):
+            return False
+    
+    # Check perspective flags filter
+    if filters['perspective_flags']:
+        img_flags = img_data.get('perspective_flags', [])
+        if not any(f in img_flags for f in filters['perspective_flags']):
+            return False
+    
+    # Check label-based filters
+    for field in ['direction', 'color', 'brand', 'model', 'label', 'type', 'sub_type']:
+        if filters.get(field):
+            value = img_data.get(field, '')
+            if value not in filters[field]:
+                return False
+    
+    return True
+
+
+@app.route('/api/browse/flag', methods=['POST'])
+def update_browse_flag():
+    """Update flag for an image in browse mode."""
+    data = request.get_json()
+    
+    directory = data.get('directory')
+    image_id = data.get('image_id')  # filename stem
+    flag_name = data.get('flag_name')  # 'quality_flag' or 'perspective_flag'
+    flag_value = data.get('flag_value')
+    
+    if not all([directory, image_id, flag_name]):
+        return jsonify({'success': False, 'error': 'Missing parameters'})
+    
+    path = Path(directory)
+    dataset_file = path / '.dataset.json'
+    
+    # Load or create dataset file
+    if dataset_file.exists():
+        with open(dataset_file) as f:
+            dataset_data = json.load(f)
+    else:
+        dataset_data = {
+            'created_at': datetime.now().isoformat(),
+            'image_flags': {}
+        }
+    
+    # Update flag
+    if image_id not in dataset_data['image_flags']:
+        dataset_data['image_flags'][image_id] = {}
+    
+    if flag_value:
+        dataset_data['image_flags'][image_id][flag_name] = flag_value
+    else:
+        # Remove flag if value is empty
+        dataset_data['image_flags'][image_id].pop(flag_name, None)
+    
+    dataset_data['updated_at'] = datetime.now().isoformat()
+    
+    # Save atomically
+    temp_file = dataset_file.with_suffix('.tmp')
+    with open(temp_file, 'w') as f:
+        json.dump(dataset_data, f, indent=2)
+    temp_file.rename(dataset_file)
+    
+    return jsonify({'success': True})
+
+
+@app.route('/api/browse/filter-options')
+def get_browse_filter_options():
+    """Get filter options for current directory with counts (same format as project mode)."""
+    directory = request.args.get('directory')
+    mode = request.args.get('mode', 'direct')
+    
+    if not directory:
+        return jsonify({'success': False, 'error': 'Directory required'})
+    
+    path = Path(directory)
+    if not path.exists():
+        return jsonify({'success': False, 'error': 'Invalid directory'})
+    
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp'}
+    
+    # Find images
+    if mode == 'recursive':
+        image_files = []
+        for ext in image_extensions:
+            image_files.extend(path.rglob(f'*{ext}'))
+    else:
+        image_files = [f for f in path.iterdir() 
+                      if f.is_file() and f.suffix.lower() in image_extensions]
+    
+    # Load dataset flags
+    dataset_file = path / '.dataset.json'
+    image_flags = {}
+    if dataset_file.exists():
+        try:
+            with open(dataset_file) as f:
+                image_flags = json.load(f).get('image_flags', {})
+        except:
+            pass
+    
+    # Initialize counters
+    quality_flags_count = {}
+    perspective_flags_count = {}
+    direction_count = {'front': 0, 'back': 0}
+    color_count = {}
+    brand_count = {}
+    model_count = {}
+    label_count = {}
+    type_count = {}
+    sub_type_count = {}
+    
+    for img_path in image_files:
+        img_id = img_path.stem
+        
+        # Get flags from dataset.json
+        flags = image_flags.get(img_id, {})
+        if flags.get('quality_flag'):
+            qf = flags['quality_flag']
+            quality_flags_count[qf] = quality_flags_count.get(qf, 0) + 1
+        if flags.get('perspective_flag'):
+            pf = flags['perspective_flag']
+            perspective_flags_count[pf] = perspective_flags_count.get(pf, 0) + 1
+        
+        # Get labels from JSON
+        label_path = img_path.with_suffix('.json')
+        if label_path.exists():
+            try:
+                with open(label_path) as f:
+                    labels = json.load(f)
+                    if isinstance(labels, list):
+                        for item in labels:
+                            # Direction
+                            direction = item.get('direction', 'front')
+                            direction_count[direction] = direction_count.get(direction, 0) + 1
+                            
+                            # Color
+                            color = item.get('color')
+                            if color:
+                                color_count[color] = color_count.get(color, 0) + 1
+                            
+                            # Brand
+                            brand = item.get('brand')
+                            if brand:
+                                brand_count[brand] = brand_count.get(brand, 0) + 1
+                            
+                            # Model
+                            model = item.get('model')
+                            if model:
+                                model_count[model] = model_count.get(model, 0) + 1
+                            
+                            # Label
+                            label = item.get('label')
+                            if label:
+                                label_count[label] = label_count.get(label, 0) + 1
+                            
+                            # Type
+                            vtype = item.get('type')
+                            if vtype:
+                                type_count[vtype] = type_count.get(vtype, 0) + 1
+                            
+                            # Sub-type
+                            sub_type = item.get('sub_type')
+                            if sub_type:
+                                sub_type_count[sub_type] = sub_type_count.get(sub_type, 0) + 1
+            except:
+                pass
+    
+    # Convert to sorted lists of {value, count} - same format as project mode
+    def to_option_list(count_dict):
+        return sorted([{'value': k, 'count': v} for k, v in count_dict.items()], 
+                      key=lambda x: (-x['count'], x['value']))
+    
+    return jsonify({
+        'success': True,
+        'data': {
+            'quality_flags': to_option_list(quality_flags_count),
+            'perspective_flags': to_option_list(perspective_flags_count),
+            'direction': to_option_list(direction_count),
+            'color': to_option_list(color_count),
+            'brand': to_option_list(brand_count),
+            'model': to_option_list(model_count),
+            'label': to_option_list(label_count),
+            'type': to_option_list(type_count),
+            'sub_type': to_option_list(sub_type_count),
+            'total_images': len(image_files)
+        }
+    })
+
+
+@app.route('/api/browse/labels/<path:image_path>')
+def get_browse_labels(image_path):
+    """Get labels for an image in browse mode."""
+    img_path = Path('/' + image_path)  # Restore absolute path
+    label_path = img_path.with_suffix('.json')
+    
+    if not label_path.exists():
+        return jsonify({
+            'success': True,
+            'data': {
+                'filename': img_path.name,
+                'has_labels': False,
+                'objects': []
+            }
+        })
+    
+    try:
+        with open(label_path) as f:
+            label_data = json.load(f)
+        
+        if not isinstance(label_data, list):
+            label_data = [label_data]
+        
+        # Get image dimensions for percentage calculation
+        try:
+            with Image.open(img_path) as img:
+                img_width, img_height = img.size
+        except:
+            img_width, img_height = 1000, 1000  # Default fallback
+        
+        # Process objects (same format as get_label_data_for_image)
+        objects = []
+        for idx, obj in enumerate(label_data):
+            rect = obj.get('rect', [0, 0, 0, 0])
+            x, y, w, h = rect
+            
+            # Calculate percentages
+            rect_percent = {
+                'x': (x / img_width) * 100,
+                'y': (y / img_height) * 100,
+                'width': (w / img_width) * 100,
+                'height': (h / img_height) * 100
+            }
+            
+            center_percent = {
+                'x': ((x + w/2) / img_width) * 100,
+                'y': ((y + h/2) / img_height) * 100
+            }
+            
+            objects.append({
+                'index': idx,
+                'rect': rect,
+                'rect_percent': rect_percent,
+                'center_percent': center_percent,
+                'direction': obj.get('direction', 'front'),
+                'labels': {
+                    'color': obj.get('color'),
+                    'brand': obj.get('brand'),
+                    'model': obj.get('model'),
+                    'label': obj.get('label'),
+                    'type': obj.get('type'),
+                    'sub_type': obj.get('sub_type'),
+                    'lp_coords': obj.get('lp_coords')
+                }
+            })
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'filename': img_path.name,
+                'has_labels': True,
+                'objects': objects
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
+@app.route('/api/browse/labels/save', methods=['PUT'])
+def save_browse_labels():
+    """Save all objects/bboxes for an image in browse mode."""
+    data = request.get_json()
+    image_path = data.get('image_path')
+    objects = data.get('objects', [])
+    
+    if not image_path:
+        return jsonify({'success': False, 'error': 'Missing image_path'}), 400
+    
+    img_path = Path(image_path)
+    label_path = img_path.with_suffix('.json')
+    
+    # Validate image exists
+    if not img_path.exists():
+        return jsonify({'success': False, 'error': f'Image not found: {image_path}'}), 404
+    
+    # Convert objects to storage format
+    label_data = []
+    for obj in objects:
+        label_obj = {
+            'rect': obj.get('rect', [0, 0, 0, 0]),
+            'color': obj.get('color', ''),
+            'brand': obj.get('brand', ''),
+            'model': obj.get('model', ''),
+            'type': obj.get('type', ''),
+            'sub_type': obj.get('sub_type', ''),
+            'label': obj.get('label', ''),
+            'lp_coords': obj.get('lp_coords'),
+            'direction': obj.get('direction', 'front')
+        }
+        label_data.append(label_obj)
+    
+    # Write atomically
+    try:
+        temp_path = label_path.with_suffix('.json.tmp')
+        with open(temp_path, 'w') as f:
+            json.dump(label_data, f, indent=2)
+        temp_path.rename(label_path)
+        
+        print(f"LABELS SAVED: {label_path} ({len(label_data)} objects)")
+        
+        return jsonify({
+            'success': True,
+            'data': {
+                'objects_count': len(label_data),
+                'path': str(label_path)
+            }
+        })
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # ============== Main ==============
+
+@app.route('/api/browse/image/full/<path:image_path>')
+def get_browse_full_image(image_path):
+    """Get full-resolution image for browse mode."""
+    img_path = Path('/' + image_path)  # Restore absolute path
+    
+    if not img_path.exists():
+        return jsonify({'success': False, 'error': 'Image file not found'}), 404
+    
+    try:
+        with Image.open(img_path) as img:
+            # Convert to RGB
+            if img.mode in ('RGBA', 'P'):
+                img = img.convert('RGB')
+            
+            width, height = img.size
+            
+            # Resize if very large (for performance)
+            max_dim = 1800
+            if max(width, height) > max_dim:
+                ratio = max_dim / max(width, height)
+                new_size = (int(width * ratio), int(height * ratio))
+                img = img.resize(new_size, Image.LANCZOS)
+                width, height = new_size
+            
+            # Encode to base64
+            buffer = io.BytesIO()
+            img.save(buffer, format='JPEG', quality=92)
+            base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return jsonify({
+                'success': True,
+                'data': {
+                    'seq_id': stable_hash(str(img_path)),
+                    'filename': img_path.name,
+                    'image': f"data:image/jpeg;base64,{base64_str}",
+                    'width': width,
+                    'height': height,
+                    'full_path': str(img_path)
+                }
+            })
+    
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 if __name__ == '__main__':
     print("=" * 50)

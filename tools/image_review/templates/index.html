@@ -7,64 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
-    <!-- Startup Modal (visible on load) -->
-    <div id="startup-modal" class="modal">
-        <div class="modal-content startup-modal">
-            <h1>🖼️ Image Review Tool</h1>
-            <h2>Project Setup</h2>
-            
-            <!-- Create New Project Section -->
-            <div class="section">
-                <h3>Create New Project</h3>
-                <div class="form-group">
-                    <label>Project Name:</label>
-                    <input type="text" id="project-name" placeholder="my_project" 
-                           pattern="[a-zA-Z0-9_]+" title="Only letters, numbers, and underscores">
-                </div>
-                <div class="form-group">
-                    <label>Image Directory:</label>
-                    <div class="input-with-button">
-                        <input type="text" id="directory-path" readonly placeholder="Click Browse to select...">
-                        <button onclick="openBrowser()">Browse...</button>
-                    </div>
-                    <div id="directory-info" class="info-text"></div>
-                </div>
-                <div class="form-group">
-                    <label>Default Quality Flag:</label>
-                    <div class="radio-group" id="default-quality-flags">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Default Perspective Flag:</label>
-                    <div class="radio-group" id="default-perspective-flags">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Visible Labels:</label>
-                    <div class="checkbox-group" id="visible-labels">
-                        <!-- Populated by JS -->
-                    </div>
-                </div>
-                <button class="primary" onclick="createProject()">Create Project</button>
-            </div>
-            
-            <div class="divider">OR</div>
-            
-            <!-- Open Recent Section -->
-            <div class="section">
-                <h3>Open Recent Project</h3>
-                <select id="recent-projects">
-                    <option value="">Select a project...</option>
-                </select>
-                <div id="recent-project-info" class="info-text"></div>
-                <button onclick="openProject()">Open Project</button>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Directory Browser Modal -->
+    <!-- Directory Browser Modal (for selecting directories) -->
     <div id="browser-modal" class="modal hidden">
         <div class="modal-backdrop" onclick="closeBrowser()"></div>
         <div class="modal-content browser-modal">
@@ -89,13 +32,21 @@
         </div>
     </div>
     
-    <!-- Main Application (hidden until project loaded) -->
-    <div id="main-app" class="hidden">
+    <!-- Main Application -->
+    <div id="main-app">
         <!-- Header -->
         <header>
             <div class="header-left">
                 <h1>🖼️ Image Review Tool</h1>
                 <span class="project-name" id="project-title"></span>
+                <!-- Directory Mode Info (shown when browsing) -->
+                <div class="directory-info hidden" id="directory-info">
+                    <span class="directory-path" id="active-directory-path">No directory</span>
+                    <select class="mode-select" id="browse-mode" onchange="changeBrowseMode(this.value)">
+                        <option value="direct">Direct</option>
+                        <option value="recursive">Recursive</option>
+                    </select>
+                </div>
             </div>
             <div class="toolbar">
                 <div class="label-dropdown">
@@ -195,35 +146,79 @@
             <span class="filter-summary" id="filter-summary"></span>
         </div>
         
-        <!-- Filter Panel (Left Sidebar) -->
+        <!-- Content Wrapper (Sidebar + Grid + Metadata Panel) -->
+        <div class="content-wrapper">
+        
+        <!-- Sidebar Panel (Filters + Directories) -->
         <aside id="filter-panel" class="filter-panel">
-            <div class="filter-panel-header">
-                <button class="filter-collapse-btn" onclick="toggleFilterPanel()" title="Collapse Filters">
-                    <span class="toggle-icon" id="panel-toggle-icon">◀</span>
+            <!-- Sidebar Tabs -->
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="filters" onclick="switchSidebarTab('filters')">
+                    🔍 Filters
                 </button>
-                <span class="filter-title">FILTERS</span>
-                <span class="filter-count" id="filter-match-count">0 images</span>
+                <button class="sidebar-tab" data-tab="directories" onclick="switchSidebarTab('directories')">
+                    📁 Directories
+                </button>
             </div>
             
-            <div class="filter-panel-content">
-                <!-- Search Box -->
-                <div class="filter-search">
-                    <input type="text" id="filter-search-input" placeholder="🔍 Search filters..." 
-                           oninput="filterSearchOptions(this.value)" autocomplete="off">
+            <!-- Tab Content: Filters -->
+            <div class="sidebar-tab-content active" id="tab-filters">
+                <div class="filter-panel-header">
+                    <span class="filter-title">FILTERS</span>
+                    <span class="filter-count" id="filter-match-count">0 images</span>
                 </div>
                 
-                <!-- Filter Sections Container -->
-                <div class="filter-sections" id="filter-sections">
+                <div class="filter-panel-content">
+                    <!-- Search Box -->
+                    <div class="filter-search">
+                        <input type="text" id="filter-search-input" placeholder="🔍 Search filters..." 
+                               oninput="filterSearchOptions(this.value)" autocomplete="off">
+                    </div>
+                    
+                    <!-- Filter Sections Container -->
+                    <div class="filter-sections" id="filter-sections">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    
+                    <!-- Footer -->
+                    <div class="filter-panel-footer">
+                        <button class="btn-clear-filters" onclick="clearAllFilters()" id="clear-filters-btn" disabled>
+                            Clear All Filters
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab Content: Directories -->
+            <div class="sidebar-tab-content" id="tab-directories">
+                <div class="directory-header">
+                    <span class="directory-title">BROWSE</span>
+                </div>
+                
+                <div class="directory-toolbar">
+                    <button class="btn-icon" onclick="goToParentDirectory()" title="Parent Directory" id="btn-parent-dir">
+                        ⬆️
+                    </button>
+                    <button class="btn-icon" onclick="refreshDirectoryTree()" title="Refresh">
+                        🔄
+                    </button>
+                </div>
+                
+                <div class="directory-tree" id="directory-tree">
                     <!-- Populated by JavaScript -->
                 </div>
                 
-                <!-- Footer -->
-                <div class="filter-panel-footer">
-                    <button class="btn-clear-filters" onclick="clearAllFilters()" id="clear-filters-btn" disabled>
-                        Clear All Filters
+                <div class="directory-actions">
+                    <button class="btn-primary" id="btn-activate" onclick="activateDirectory()" disabled>
+                        Activate Dataset
                     </button>
                 </div>
             </div>
+            
+            <!-- Collapse Button (works for both tabs) -->
+            <button class="filter-collapse-btn" onclick="toggleFilterPanel()" title="Collapse Sidebar">
+                <span class="toggle-icon" id="panel-toggle-icon">◀</span>
+            </button>
         </aside>
         
         <!-- Main Content Area -->
@@ -233,6 +228,163 @@
                 <!-- Images populated by JavaScript -->
             </main>
         </div>
+        
+        <!-- Metadata Panel (Right Sidebar) -->
+        <aside id="metadata-panel" class="metadata-panel collapsed">
+            <div class="metadata-panel-header">
+                <button class="panel-collapse-btn" onclick="toggleMetadataPanel()" title="Expand/Collapse">
+                    <span class="toggle-icon" id="meta-panel-toggle-icon">◀</span>
+                </button>
+                <span class="panel-title">DATASET INFO</span>
+            </div>
+            
+            <div class="metadata-panel-content">
+                <!-- Statistics Section -->
+                <div class="panel-section stats-section">
+                    <div class="section-header" onclick="toggleMetadataSection(this)">
+                        <span class="section-icon">📊</span>
+                        <span class="section-title">Statistics</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content" id="stats-content">
+                        <div class="no-dataset-message">
+                            <div class="message-icon">📁</div>
+                            <p>Activate a dataset to view statistics</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Properties Section -->
+                <div class="panel-section properties-section">
+                    <div class="section-header" onclick="toggleMetadataSection(this)">
+                        <span class="section-icon">📋</span>
+                        <span class="section-title">Properties</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content" id="properties-content">
+                        <form id="metadata-form" class="metadata-form">
+                            <!-- Name (read-only) -->
+                            <div class="form-field">
+                                <label>Name</label>
+                                <input type="text" name="name" id="meta-name" readonly class="readonly">
+                            </div>
+                            
+                            <!-- Description -->
+                            <div class="form-field">
+                                <label>Description</label>
+                                <textarea name="description" id="meta-description" rows="3" placeholder="Enter dataset description..."></textarea>
+                            </div>
+                            
+                            <!-- Camera View (multi-select) -->
+                            <div class="form-field">
+                                <label>Camera View</label>
+                                <div class="checkbox-group" id="camera-view-options">
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="camera_view" value="frontal"> Frontal
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="camera_view" value="traseira"> Traseira
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="camera_view" value="panorâmica"> Panorâmica
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="camera_view" value="closeup"> Closeup
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="camera_view" value="super-panorâmica"> Super-panorâmica
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Quality -->
+                            <div class="form-field">
+                                <label>Quality</label>
+                                <select name="quality" id="meta-quality">
+                                    <option value="">Select...</option>
+                                    <option value="poor">Poor</option>
+                                    <option value="fair">Fair</option>
+                                    <option value="good">Good</option>
+                                    <option value="excellent">Excellent</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Verdict -->
+                            <div class="form-field">
+                                <label>Verdict</label>
+                                <select name="verdict" id="meta-verdict">
+                                    <option value="">Select...</option>
+                                    <option value="keep">Keep</option>
+                                    <option value="revise">Revise</option>
+                                    <option value="remove">Remove</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Cycle -->
+                            <div class="form-field">
+                                <label>Cycle</label>
+                                <select name="cycle" id="meta-cycle">
+                                    <option value="">Select...</option>
+                                    <option value="first">First</option>
+                                    <option value="second">Second</option>
+                                    <option value="third">Third</option>
+                                    <option value="fourth">Fourth</option>
+                                    <option value="fifth">Fifth</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Notes -->
+                            <div class="form-field">
+                                <label>Notes</label>
+                                <textarea name="notes" id="meta-notes" rows="4" placeholder="Additional notes..."></textarea>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="button" class="save-btn" onclick="saveDatasetMetadata()">
+                                    Save Changes
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                
+                <!-- Stats Configuration Section -->
+                <div class="panel-section config-section">
+                    <div class="section-header" onclick="toggleMetadataSection(this)">
+                        <span class="section-icon">⚙️</span>
+                        <span class="section-title">Stats Config</span>
+                        <span class="section-toggle">▼</span>
+                    </div>
+                    <div class="section-content" id="config-content">
+                        <div class="stats-config-form">
+                            <label>Fields to show in statistics:</label>
+                            <div class="checkbox-group" id="stats-fields-options">
+                                <label class="checkbox-option">
+                                    <input type="checkbox" name="stats_fields" value="label" checked> label
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" name="stats_fields" value="color" checked> color
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" name="stats_fields" value="model" checked> model
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" name="stats_fields" value="quality_flag"> quality_flag
+                                </label>
+                                <label class="checkbox-option">
+                                    <input type="checkbox" name="stats_fields" value="direction"> direction
+                                </label>
+                            </div>
+                            <button type="button" class="config-save-btn" onclick="saveStatsConfig()">
+                                Apply
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        </div><!-- End content-wrapper -->
         
         <!-- Footer -->
         <footer>
@@ -280,6 +432,41 @@
                         </div>
                         <div class="label-editors" id="label-editors">
                             <!-- Label input fields rendered here -->
+                        </div>
+                        
+                        <!-- Bounding Box Editor Section -->
+                        <div class="bbox-editor-section" id="bbox-editor-section">
+                            <h4>📐 Bounding Boxes</h4>
+                            
+                            <!-- Add new object button - always visible -->
+                            <button class="btn-add-object" onclick="addNewObject()" id="btn-add-object">
+                                ➕ Add New Object
+                            </button>
+                            
+                            <!-- View mode -->
+                            <div id="bbox-view-mode">
+                                <button class="btn-edit-bbox" onclick="enterBboxEditMode()">
+                                    🖊️ Edit Bounding Boxes
+                                </button>
+                            </div>
+                            
+                            <!-- Edit mode (hidden by default) -->
+                            <div id="bbox-edit-mode" class="hidden">
+                                <div class="bbox-toolbar">
+                                    <button onclick="deleteBbox()" id="bbox-delete-btn" disabled title="Delete Selected">
+                                        🗑️ Delete Selected
+                                    </button>
+                                </div>
+                                <p class="bbox-hint" id="bbox-hint">Click a box to select it</p>
+                                <div class="bbox-actions">
+                                    <button onclick="saveBboxChanges()" class="btn-save">
+                                        💾 Save
+                                    </button>
+                                    <button onclick="cancelBboxEdit()" class="btn-cancel">
+                                        ✕ Cancel
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -486,7 +673,7 @@
                 <h3>Navigation</h3>
                 <div class="shortcut-row"><kbd>W</kbd><span>Previous page</span></div>
                 <div class="shortcut-row"><kbd>E</kbd><span>Next page</span></div>
-                <div class="shortcut-row"><kbd>1-4</kbd><span>Change grid size</span></div>
+                <div class="shortcut-row"><kbd>1-4</kbd><span>Grid size (when not hovering image)</span></div>
                 <div class="shortcut-row"><kbd>G</kbd><span>Custom grid size</span></div>
             </div>
             
@@ -501,7 +688,8 @@
                 <h3>Actions</h3>
                 <div class="shortcut-row"><kbd>R</kbd><span>Delete hovered/selected</span></div>
                 <div class="shortcut-row"><kbd>F</kbd><span>Flag selected/hovered</span></div>
-                <div class="shortcut-row"><kbd>Q</kbd><span>Cycle quality flag (hover/selected)</span></div>
+                <div class="shortcut-row"><kbd>1-9</kbd><span>Set quality flag (hover/selected)</span></div>
+                <div class="shortcut-row"><kbd>Q</kbd><span>Cycle quality flag</span></div>
                 <div class="shortcut-row"><kbd>P</kbd><span>Perspective flags</span></div>
             </div>
             

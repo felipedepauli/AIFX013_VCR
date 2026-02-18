@@ -11,6 +11,16 @@ let currentProject = null;
 let projectData = null;
 let browserCurrentPath = null;
 
+// Browse state (Directory mode - Phase 2.0)
+const browseState = {
+    isActive: false,          // Whether we're in directory browsing mode
+    activePath: null,         // Currently active (loaded) directory
+    selectedPath: null,       // Currently selected in tree (not yet activated)
+    displayMode: 'direct',    // 'direct' or 'recursive'
+    expandedNodes: new Set(), // Expanded directory nodes
+    basePath: '/home/pauli/temp/AIFX013_VCR'  // Base path for browsing
+};
+
 // Grid state
 const gridState = {
     gridSize: 9,           // Current grid size (4, 9, 25, 36)
@@ -38,6 +48,28 @@ const flagModalState = {
     seqIds: [],
     selectedQualityFlags: new Set(),
     selectedPerspectiveFlags: new Set()
+};
+
+// Bounding Box Editor state
+const bboxEditorState = {
+    isActive: false,           // Edit mode on/off
+    originalObjects: [],       // Backup for cancel (deep copy)
+    currentObjects: [],        // Working copy (modified during edit)
+    selectedIndex: null,       // Currently selected bbox index
+    
+    // Drag state
+    isDragging: false,
+    dragType: null,            // 'move' | 'resize-nw' | 'resize-ne' | etc.
+    dragStartPos: { x: 0, y: 0 },
+    dragStartRect: null,       // { x, y, width, height } in percent
+    
+    // Draw new rectangle
+    isDrawingNew: false,
+    drawStart: null,           // { x, y } in percent
+    
+    // Image dimensions (for coordinate conversion)
+    imgWidth: 0,
+    imgHeight: 0
 };
 
 // Flag configuration
@@ -169,22 +201,18 @@ document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
     console.log('🖼️ Image Review Tool - Initializing...');
-    populateDefaultOptions();
-    await loadRecentProjects();
     setupEventListeners();
     initFilterPanel();
+    initDirectoryBrowsing();
+    initMetadataPanel();
+    
+    // Auto-switch to Directories tab on startup
+    switchSidebarTab('directories');
+    
     console.log('✓ Initialization complete');
 }
 
 function setupEventListeners() {
-    // Project name validation
-    document.getElementById('project-name').addEventListener('input', (e) => {
-        e.target.value = e.target.value.replace(/[^a-zA-Z0-9_]/g, '');
-    });
-    
-    // Recent project selection info
-    document.getElementById('recent-projects').addEventListener('change', onRecentProjectChange);
-    
     // Keyboard shortcuts
     document.addEventListener('keydown', handleKeyboard);
     
@@ -224,6 +252,11 @@ function handleKeyboard(e) {
     if (modalState && modalState.isOpen) {
         switch (e.key) {
             case 'Escape':
+                // If bbox edit mode active, cancel it first
+                if (bboxEditorState.isActive) {
+                    cancelBboxEdit();
+                    return;
+                }
                 closeImageModal();
                 return;
             case 'ArrowLeft':
@@ -234,6 +267,15 @@ function handleKeyboard(e) {
                 e.preventDefault();
                 modalNextImage();
                 return;
+            case 'Delete':
+            case 'Backspace':
+                // Delete selected bbox if in edit mode
+                if (bboxEditorState.isActive && bboxEditorState.selectedIndex !== null) {
+                    e.preventDefault();
+                    deleteBbox();
+                    return;
+                }
+                break;
         }
         return;  // Don't process other shortcuts when modal open
     }
@@ -297,16 +339,26 @@ function handleKeyboard(e) {
             nextPage();
             break;
         case '1':
-            setGridSize(4);
-            break;
         case '2':
-            setGridSize(9);
-            break;
         case '3':
-            setGridSize(25);
-            break;
         case '4':
-            setGridSize(36);
+        case '5':
+        case '6':
+        case '7':
+        case '8':
+        case '9':
+            // Check if hovering over image or have selection - set quality flag
+            const hoveredForQuality = document.querySelector('.image-card:hover');
+            if (hoveredForQuality || gridState.selectedImages.size > 0) {
+                e.preventDefault();
+                setQualityFlagByNumber(parseInt(e.key));
+            } else {
+                // No hover/selection: use for grid size (1-4 only)
+                const gridSizes = { '1': 4, '2': 9, '3': 25, '4': 36 };
+                if (gridSizes[e.key]) {
+                    setGridSize(gridSizes[e.key]);
+                }
+            }
             break;
         case 'a':
         case 'A':
@@ -678,11 +730,6 @@ async function openProject() {
 // Main App Initialization
 // ============================================
 
-function closeStartupModal() {
-    document.getElementById('startup-modal').classList.add('hidden');
-    document.getElementById('main-app').classList.remove('hidden');
-}
-
 function initializeMainApp(data) {
     console.log('Initializing main app with project:', data.project_name);
     
@@ -902,8 +949,15 @@ async function loadImages() {
     try {
         // Build URL with filter parameters
         const filterParams = buildFilterParams();
+        
+        // Add directory parameter if in browse mode
+        let directoryParam = '';
+        if (browseState.isActive && browseState.activePath) {
+            directoryParam = `&directory=${encodeURIComponent(browseState.activePath)}&mode=${browseState.displayMode}`;
+        }
+        
         const response = await fetch(
-            `/api/images?page=${gridState.currentPage}&size=${gridState.gridSize}${filterParams}`
+            `/api/images?page=${gridState.currentPage}&size=${gridState.gridSize}${filterParams}${directoryParam}`
         );
         const data = await response.json();
         
@@ -943,6 +997,11 @@ function createImageCard(img) {
     card.dataset.filename = img.filename;
     card.dataset.imgWidth = img.img_width || 0;
     card.dataset.imgHeight = img.img_height || 0;
+    
+    // Store full path for browse mode
+    if (img.full_path) {
+        card.dataset.fullPath = img.full_path;
+    }
     
     if (gridState.selectedImages.has(img.seq_id)) {
         card.classList.add('selected');
@@ -1206,7 +1265,25 @@ async function loadModalImage(seqId) {
     seqIdEl.textContent = '';
     
     try {
-        const response = await fetch(`/api/image/${seqId}/full`);
+        let endpoint;
+        
+        // Browse mode: use full path from card
+        if (browseState.isActive) {
+            const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+            if (card && card.dataset.fullPath) {
+                // Remove leading slash for URL encoding
+                const imagePath = card.dataset.fullPath.replace(/^\//, '');
+                endpoint = `/api/browse/image/full/${imagePath}`;
+            } else {
+                filenameEl.textContent = 'Error: Image path not found';
+                return;
+            }
+        } else {
+            // Project mode
+            endpoint = `/api/image/${seqId}/full`;
+        }
+        
+        const response = await fetch(endpoint);
         const data = await response.json();
         
         if (data.success) {
@@ -1463,6 +1540,14 @@ function updateModalNavButtons() {
 }
 
 function modalPrevImage() {
+    // Check if bbox edit mode is active
+    if (bboxEditorState.isActive) {
+        if (!confirm('You have unsaved bounding box changes. Discard and continue?')) {
+            return;
+        }
+        exitBboxEditMode();
+    }
+    
     const currentIdx = modalState.visibleSeqIds.indexOf(modalState.currentSeqId);
     if (currentIdx > 0) {
         modalState.currentSeqId = modalState.visibleSeqIds[currentIdx - 1];
@@ -1472,6 +1557,14 @@ function modalPrevImage() {
 }
 
 function modalNextImage() {
+    // Check if bbox edit mode is active
+    if (bboxEditorState.isActive) {
+        if (!confirm('You have unsaved bounding box changes. Discard and continue?')) {
+            return;
+        }
+        exitBboxEditMode();
+    }
+    
     const currentIdx = modalState.visibleSeqIds.indexOf(modalState.currentSeqId);
     if (currentIdx < modalState.visibleSeqIds.length - 1) {
         modalState.currentSeqId = modalState.visibleSeqIds[currentIdx + 1];
@@ -1481,6 +1574,14 @@ function modalNextImage() {
 }
 
 function closeImageModal() {
+    // Check if bbox edit mode is active
+    if (bboxEditorState.isActive) {
+        if (!confirm('You have unsaved bounding box changes. Discard and close?')) {
+            return;
+        }
+        exitBboxEditMode();
+    }
+    
     document.getElementById('image-modal').classList.add('hidden');
     modalState.isOpen = false;
     document.body.style.overflow = '';
@@ -1505,6 +1606,18 @@ function toggleEditPanel() {
 async function renderEditPanel(seqId) {
     const objectSelector = document.getElementById('object-selector');
     const labelEditors = document.getElementById('label-editors');
+    const bboxEditBtn = document.querySelector('.btn-edit-bbox');
+    
+    // Reset bbox editor state when loading new image
+    if (bboxEditorState.isActive) {
+        exitBboxEditMode();
+    }
+    
+    // Reset bbox editor UI
+    const bboxViewMode = document.getElementById('bbox-view-mode');
+    const bboxEditMode = document.getElementById('bbox-edit-mode');
+    if (bboxViewMode) bboxViewMode.classList.remove('hidden');
+    if (bboxEditMode) bboxEditMode.classList.add('hidden');
     
     // Get label data
     const labelData = await loadLabels(seqId);
@@ -1514,8 +1627,13 @@ async function renderEditPanel(seqId) {
     if (!labelData || !labelData.has_labels || labelData.objects.length === 0) {
         objectSelector.innerHTML = '';
         labelEditors.innerHTML = '<div class="no-labels-message">📋 No labels available for this image</div>';
+        // Still allow adding bboxes even with no existing labels
+        if (bboxEditBtn) bboxEditBtn.disabled = false;
         return;
     }
+    
+    // Enable bbox edit button
+    if (bboxEditBtn) bboxEditBtn.disabled = false;
     
     // Render object selector buttons
     objectSelector.innerHTML = labelData.objects.map((obj, idx) => {
@@ -1672,6 +1790,606 @@ function updateObjectSelectorButton(objectIndex) {
         const type = obj.labels.type || 'vehicle';
         btn.innerHTML = `${type} ${objectIndex + 1} <small>(${color})</small>`;
     }
+}
+
+// ============================================
+// Bounding Box Editor
+// ============================================
+
+/**
+ * Enter bbox edit mode
+ */
+function enterBboxEditMode() {
+    // Allow editing even with no existing labels (to add new ones)
+    const objects = editPanelState.labelData?.objects || [];
+    
+    // Deep copy objects for editing
+    bboxEditorState.originalObjects = JSON.parse(JSON.stringify(objects));
+    bboxEditorState.currentObjects = JSON.parse(JSON.stringify(objects));
+    bboxEditorState.isActive = true;
+    bboxEditorState.selectedIndex = null;
+    
+    // Get image dimensions
+    const modalImg = document.getElementById('modal-image');
+    if (modalImg) {
+        bboxEditorState.imgWidth = modalImg.naturalWidth || 1000;
+        bboxEditorState.imgHeight = modalImg.naturalHeight || 1000;
+    }
+    
+    // Update UI
+    document.getElementById('bbox-view-mode').classList.add('hidden');
+    document.getElementById('bbox-edit-mode').classList.remove('hidden');
+    document.getElementById('label-editors').classList.add('disabled');
+    
+    // Set appropriate hint
+    if (bboxEditorState.currentObjects.length === 0) {
+        document.getElementById('bbox-hint').textContent = 'No boxes yet - use "Add New Object" above';
+    } else {
+        document.getElementById('bbox-hint').textContent = 'Click a box to select it';
+    }
+    document.getElementById('bbox-delete-btn').disabled = true;
+    
+    // Re-render bboxes with handles
+    renderBboxesEditable();
+    
+    // Add event listeners for drag
+    const overlay = document.getElementById('modal-labels');
+    overlay.classList.add('edit-mode');
+    overlay.addEventListener('mousedown', handleBboxMouseDown);
+    document.addEventListener('mousemove', handleBboxMouseMove);
+    document.addEventListener('mouseup', handleBboxMouseUp);
+}
+
+/**
+ * Exit bbox edit mode
+ */
+function exitBboxEditMode() {
+    bboxEditorState.isActive = false;
+    bboxEditorState.selectedIndex = null;
+    bboxEditorState.isDrawingNew = false;
+    bboxEditorState.isDragging = false;
+    
+    // Update UI
+    document.getElementById('bbox-view-mode').classList.remove('hidden');
+    document.getElementById('bbox-edit-mode').classList.add('hidden');
+    document.getElementById('label-editors').classList.remove('disabled');
+    
+    const container = document.querySelector('.modal-image-container');
+    if (container) container.classList.remove('drawing-mode');
+    
+    // Remove event listeners
+    const overlay = document.getElementById('modal-labels');
+    overlay.classList.remove('edit-mode');
+    overlay.removeEventListener('mousedown', handleBboxMouseDown);
+    document.removeEventListener('mousemove', handleBboxMouseMove);
+    document.removeEventListener('mouseup', handleBboxMouseUp);
+    
+    // Re-render normal bboxes
+    renderModalLabels(modalState.currentSeqId);
+}
+
+/**
+ * Render bboxes with editable handles
+ */
+function renderBboxesEditable() {
+    const overlay = document.getElementById('modal-labels');
+    if (!overlay) return;
+    
+    overlay.innerHTML = '';
+    
+    // Remove draw preview if exists
+    const existingPreview = overlay.querySelector('.draw-preview');
+    if (existingPreview) existingPreview.remove();
+    
+    bboxEditorState.currentObjects.forEach((obj, idx) => {
+        const rect = obj.rect_percent || {
+            x: (obj.rect[0] / bboxEditorState.imgWidth) * 100,
+            y: (obj.rect[1] / bboxEditorState.imgHeight) * 100,
+            width: (obj.rect[2] / bboxEditorState.imgWidth) * 100,
+            height: (obj.rect[3] / bboxEditorState.imgHeight) * 100
+        };
+        
+        // Store working rect_percent
+        obj.rect_percent = rect;
+        
+        const vehicleColor = getVehicleColor(obj.labels?.color);
+        const boxBorderColor = vehicleColor ? vehicleColor.border : 'rgba(74, 105, 189, 0.7)';
+        
+        const bbox = document.createElement('div');
+        bbox.className = 'bbox editing';
+        bbox.dataset.index = idx;
+        
+        if (idx === bboxEditorState.selectedIndex) {
+            bbox.classList.add('selected');
+        }
+        
+        bbox.style.left = `${rect.x}%`;
+        bbox.style.top = `${rect.y}%`;
+        bbox.style.width = `${rect.width}%`;
+        bbox.style.height = `${rect.height}%`;
+        bbox.style.borderColor = boxBorderColor;
+        bbox.style.borderWidth = '3px';
+        
+        // Add resize handles
+        const handles = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+        handles.forEach(pos => {
+            const handle = document.createElement('div');
+            handle.className = `bbox-handle ${pos}`;
+            handle.dataset.handle = pos;
+            handle.dataset.index = idx;
+            bbox.appendChild(handle);
+        });
+        
+        // Add index label
+        const indexLabel = document.createElement('span');
+        indexLabel.className = 'bbox-index-label';
+        indexLabel.textContent = idx + 1;
+        indexLabel.style.cssText = 'position:absolute;top:2px;left:2px;background:rgba(0,0,0,0.7);color:#fff;padding:2px 6px;font-size:11px;border-radius:3px;';
+        bbox.appendChild(indexLabel);
+        
+        overlay.appendChild(bbox);
+    });
+}
+
+/**
+ * Handle mouse down on bbox or handle
+ */
+function handleBboxMouseDown(e) {
+    if (!bboxEditorState.isActive) return;
+    
+    // Prevent browser's default image drag behavior
+    e.preventDefault();
+    
+    const overlay = document.getElementById('modal-labels');
+    const rect = overlay.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    // Check if drawing new bbox
+    if (bboxEditorState.isDrawingNew) {
+        e.stopPropagation();
+        bboxEditorState.drawStart = { x, y };
+        bboxEditorState.isDragging = true;
+        bboxEditorState.dragType = 'draw';
+        return;
+    }
+    
+    // Check if clicked on handle
+    const handle = e.target.closest('.bbox-handle');
+    if (handle) {
+        e.stopPropagation();
+        const idx = parseInt(handle.dataset.index);
+        const pos = handle.dataset.handle;
+        
+        selectBbox(idx);
+        
+        bboxEditorState.isDragging = true;
+        bboxEditorState.dragType = `resize-${pos}`;
+        bboxEditorState.dragStartPos = { x, y };
+        bboxEditorState.dragStartRect = { ...bboxEditorState.currentObjects[idx].rect_percent };
+        return;
+    }
+    
+    // Check if clicked on bbox body
+    const bbox = e.target.closest('.bbox.editing');
+    if (bbox) {
+        e.stopPropagation();
+        const idx = parseInt(bbox.dataset.index);
+        
+        selectBbox(idx);
+        
+        bboxEditorState.isDragging = true;
+        bboxEditorState.dragType = 'move';
+        bboxEditorState.dragStartPos = { x, y };
+        bboxEditorState.dragStartRect = { ...bboxEditorState.currentObjects[idx].rect_percent };
+        return;
+    }
+    
+    // Clicked on empty area - deselect
+    selectBbox(null);
+}
+
+/**
+ * Handle mouse move for drag operations
+ */
+function handleBboxMouseMove(e) {
+    if (!bboxEditorState.isActive || !bboxEditorState.isDragging) return;
+    
+    const overlay = document.getElementById('modal-labels');
+    const rect = overlay.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    
+    // Drawing new bbox
+    if (bboxEditorState.dragType === 'draw' && bboxEditorState.drawStart) {
+        renderDrawPreview(bboxEditorState.drawStart, { x, y });
+        return;
+    }
+    
+    const idx = bboxEditorState.selectedIndex;
+    if (idx === null) return;
+    
+    const startRect = bboxEditorState.dragStartRect;
+    const startPos = bboxEditorState.dragStartPos;
+    const dx = x - startPos.x;
+    const dy = y - startPos.y;
+    
+    let newRect = { ...startRect };
+    
+    if (bboxEditorState.dragType === 'move') {
+        // Move entire bbox
+        newRect.x = Math.max(0, Math.min(100 - startRect.width, startRect.x + dx));
+        newRect.y = Math.max(0, Math.min(100 - startRect.height, startRect.y + dy));
+    } else if (bboxEditorState.dragType.startsWith('resize-')) {
+        const handle = bboxEditorState.dragType.split('-')[1];
+        const minSize = 2; // Minimum 2% size
+        
+        // Resize based on handle position
+        if (handle.includes('w')) {
+            const newX = Math.max(0, startRect.x + dx);
+            const newWidth = startRect.width - (newX - startRect.x);
+            if (newWidth >= minSize) {
+                newRect.x = newX;
+                newRect.width = newWidth;
+            }
+        }
+        if (handle.includes('e')) {
+            newRect.width = Math.max(minSize, Math.min(100 - startRect.x, startRect.width + dx));
+        }
+        if (handle.includes('n')) {
+            const newY = Math.max(0, startRect.y + dy);
+            const newHeight = startRect.height - (newY - startRect.y);
+            if (newHeight >= minSize) {
+                newRect.y = newY;
+                newRect.height = newHeight;
+            }
+        }
+        if (handle.includes('s')) {
+            newRect.height = Math.max(minSize, Math.min(100 - startRect.y, startRect.height + dy));
+        }
+    }
+    
+    // Update current object
+    bboxEditorState.currentObjects[idx].rect_percent = newRect;
+    
+    // Update pixel rect
+    bboxEditorState.currentObjects[idx].rect = [
+        (newRect.x / 100) * bboxEditorState.imgWidth,
+        (newRect.y / 100) * bboxEditorState.imgHeight,
+        (newRect.width / 100) * bboxEditorState.imgWidth,
+        (newRect.height / 100) * bboxEditorState.imgHeight
+    ];
+    
+    // Re-render
+    renderBboxesEditable();
+}
+
+/**
+ * Handle mouse up - end drag
+ */
+function handleBboxMouseUp(e) {
+    if (!bboxEditorState.isActive) return;
+    
+    // Finish drawing new bbox
+    if (bboxEditorState.dragType === 'draw' && bboxEditorState.drawStart) {
+        const overlay = document.getElementById('modal-labels');
+        const rect = overlay.getBoundingClientRect();
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        
+        finishDrawNewBbox(bboxEditorState.drawStart, { x, y });
+    }
+    
+    bboxEditorState.isDragging = false;
+    bboxEditorState.dragType = null;
+    bboxEditorState.dragStartPos = null;
+    bboxEditorState.dragStartRect = null;
+}
+
+/**
+ * Render draw preview rectangle
+ */
+function renderDrawPreview(start, current) {
+    const overlay = document.getElementById('modal-labels');
+    let preview = overlay.querySelector('.draw-preview');
+    
+    if (!preview) {
+        preview = document.createElement('div');
+        preview.className = 'draw-preview';
+        overlay.appendChild(preview);
+    }
+    
+    const left = Math.min(start.x, current.x);
+    const top = Math.min(start.y, current.y);
+    const width = Math.abs(current.x - start.x);
+    const height = Math.abs(current.y - start.y);
+    
+    preview.style.left = `${left}%`;
+    preview.style.top = `${top}%`;
+    preview.style.width = `${width}%`;
+    preview.style.height = `${height}%`;
+}
+
+/**
+ * Finish drawing new bbox
+ */
+function finishDrawNewBbox(start, end) {
+    const left = Math.min(start.x, end.x);
+    const top = Math.min(start.y, end.y);
+    const width = Math.abs(end.x - start.x);
+    const height = Math.abs(end.y - start.y);
+    
+    // Minimum size check (at least 2%)
+    if (width < 2 || height < 2) {
+        showNotification('Rectangle too small, try again', 'warning');
+        bboxEditorState.isDrawingNew = false;
+        const container = document.querySelector('.modal-image-container');
+        if (container) container.classList.remove('drawing-mode');
+        document.getElementById('bbox-hint').textContent = 'Click a box to select it';
+        
+        // Remove preview
+        const preview = document.querySelector('.draw-preview');
+        if (preview) preview.remove();
+        
+        renderBboxesEditable();
+        return;
+    }
+    
+    // Create new object with empty labels
+    const newObj = {
+        rect: [
+            (left / 100) * bboxEditorState.imgWidth,
+            (top / 100) * bboxEditorState.imgHeight,
+            (width / 100) * bboxEditorState.imgWidth,
+            (height / 100) * bboxEditorState.imgHeight
+        ],
+        rect_percent: { x: left, y: top, width, height },
+        labels: {
+            color: '',
+            brand: '',
+            model: '',
+            type: '',
+            sub_type: '',
+            lp_coords: null
+        },
+        direction: 'front'
+    };
+    
+    bboxEditorState.currentObjects.push(newObj);
+    
+    // Exit draw mode
+    bboxEditorState.isDrawingNew = false;
+    const container = document.querySelector('.modal-image-container');
+    if (container) container.classList.remove('drawing-mode');
+    document.getElementById('bbox-hint').textContent = 'Click a box to select it';
+    
+    // Select the new bbox
+    selectBbox(bboxEditorState.currentObjects.length - 1);
+    
+    // Re-render
+    renderBboxesEditable();
+    
+    showNotification(`Added object #${bboxEditorState.currentObjects.length}`, 'success');
+}
+
+/**
+ * Select a bbox by index
+ */
+function selectBbox(index) {
+    bboxEditorState.selectedIndex = index;
+    
+    // Update delete button
+    document.getElementById('bbox-delete-btn').disabled = (index === null);
+    
+    // Re-render to show selection
+    renderBboxesEditable();
+    
+    // Sync with object selector if exists
+    if (index !== null && editPanelState.labelData?.objects[index]) {
+        // Update the edit panel to show this object's labels
+        selectObject(index);
+    }
+}
+
+/**
+ * Add new object - creates a default bbox and enters edit mode
+ */
+function addNewObject() {
+    // Get image dimensions
+    const modalImg = document.getElementById('modal-image');
+    if (modalImg) {
+        bboxEditorState.imgWidth = modalImg.naturalWidth || 1000;
+        bboxEditorState.imgHeight = modalImg.naturalHeight || 1000;
+    }
+    
+    // Create new object with default centered position (20% of image size)
+    const defaultSize = 20;  // 20% of image
+    const centerX = 50 - defaultSize / 2;  // Center it
+    const centerY = 50 - defaultSize / 2;
+    
+    const newObj = {
+        rect: [
+            (centerX / 100) * bboxEditorState.imgWidth,
+            (centerY / 100) * bboxEditorState.imgHeight,
+            (defaultSize / 100) * bboxEditorState.imgWidth,
+            (defaultSize / 100) * bboxEditorState.imgHeight
+        ],
+        rect_percent: { x: centerX, y: centerY, width: defaultSize, height: defaultSize },
+        labels: {
+            color: '',
+            brand: '',
+            model: '',
+            type: '',
+            sub_type: '',
+            lp_coords: null
+        },
+        direction: 'front'
+    };
+    
+    // If not already in edit mode, enter it
+    if (!bboxEditorState.isActive) {
+        // Deep copy existing objects for editing
+        bboxEditorState.originalObjects = JSON.parse(JSON.stringify(editPanelState.labelData?.objects || []));
+        bboxEditorState.currentObjects = JSON.parse(JSON.stringify(editPanelState.labelData?.objects || []));
+        bboxEditorState.isActive = true;
+        
+        // Update UI
+        document.getElementById('bbox-view-mode').classList.add('hidden');
+        document.getElementById('bbox-edit-mode').classList.remove('hidden');
+        document.getElementById('label-editors').classList.add('disabled');
+        
+        // Add event listeners for drag
+        const overlay = document.getElementById('modal-labels');
+        overlay.classList.add('edit-mode');
+        overlay.addEventListener('mousedown', handleBboxMouseDown);
+        document.addEventListener('mousemove', handleBboxMouseMove);
+        document.addEventListener('mouseup', handleBboxMouseUp);
+    }
+    
+    // Add new object to current objects
+    bboxEditorState.currentObjects.push(newObj);
+    
+    // Select the new bbox
+    bboxEditorState.selectedIndex = bboxEditorState.currentObjects.length - 1;
+    document.getElementById('bbox-delete-btn').disabled = false;
+    document.getElementById('bbox-hint').textContent = 'Drag to move, use handles to resize';
+    
+    // Re-render bboxes with handles
+    renderBboxesEditable();
+    
+    showNotification(`Added object #${bboxEditorState.currentObjects.length} - drag to position`, 'success');
+}
+
+/**
+ * Start adding new bbox (enter draw mode) - kept for backwards compatibility
+ */
+function startAddBbox() {
+    bboxEditorState.isDrawingNew = true;
+    bboxEditorState.selectedIndex = null;
+    
+    document.getElementById('bbox-hint').textContent = 'Click and drag on image to draw rectangle';
+    document.getElementById('bbox-delete-btn').disabled = true;
+    
+    const container = document.querySelector('.modal-image-container');
+    if (container) container.classList.add('drawing-mode');
+}
+
+/**
+ * Delete selected bbox
+ */
+function deleteBbox() {
+    const idx = bboxEditorState.selectedIndex;
+    if (idx === null) return;
+    
+    // Remove from array
+    bboxEditorState.currentObjects.splice(idx, 1);
+    
+    // Deselect
+    bboxEditorState.selectedIndex = null;
+    document.getElementById('bbox-delete-btn').disabled = true;
+    
+    // Re-render
+    renderBboxesEditable();
+    
+    showNotification(`Deleted object #${idx + 1}`, 'success');
+}
+
+/**
+ * Save bbox changes to server
+ */
+async function saveBboxChanges() {
+    const seqId = modalState.currentSeqId;
+    
+    // Convert objects to save format (pixel coordinates only)
+    const objectsToSave = bboxEditorState.currentObjects.map(obj => {
+        // Ensure rect is in pixel coordinates
+        const rect = obj.rect || [
+            (obj.rect_percent.x / 100) * bboxEditorState.imgWidth,
+            (obj.rect_percent.y / 100) * bboxEditorState.imgHeight,
+            (obj.rect_percent.width / 100) * bboxEditorState.imgWidth,
+            (obj.rect_percent.height / 100) * bboxEditorState.imgHeight
+        ];
+        
+        return {
+            rect: rect.map(v => Math.round(v)),
+            color: obj.labels?.color || '',
+            brand: obj.labels?.brand || '',
+            model: obj.labels?.model || '',
+            type: obj.labels?.type || '',
+            sub_type: obj.labels?.sub_type || '',
+            label: obj.labels?.label || '',
+            lp_coords: obj.labels?.lp_coords || null,
+            direction: obj.direction || 'front'
+        };
+    });
+    
+    try {
+        // Determine endpoint based on mode
+        let endpoint;
+        let body;
+        
+        if (browseState.isActive && browseState.activePath) {
+            // Browse mode
+            const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+            if (!card || !card.dataset.fullPath) {
+                throw new Error('Could not find image path');
+            }
+            endpoint = '/api/browse/labels/save';
+            body = {
+                image_path: card.dataset.fullPath,
+                objects: objectsToSave
+            };
+        } else {
+            // Project mode
+            endpoint = `/api/labels/${seqId}/objects`;
+            body = { objects: objectsToSave };
+        }
+        
+        const response = await fetch(endpoint, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Clear cache
+            labelCache.delete(seqId);
+            
+            // Update editPanelState with new data
+            editPanelState.labelData = await loadLabels(seqId);
+            
+            // Exit edit mode
+            exitBboxEditMode();
+            
+            // Re-render edit panel with updated objects
+            await renderEditPanel(seqId);
+            
+            // Re-render grid overlay
+            await renderLabels(seqId);
+            
+            showNotification('Bounding boxes saved', 'success');
+        } else {
+            showNotification(`Failed to save: ${data.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Save bbox error:', error);
+        showNotification('Failed to save bounding boxes', 'error');
+    }
+}
+
+/**
+ * Cancel bbox edit - restore original
+ */
+function cancelBboxEdit() {
+    // Restore original objects
+    bboxEditorState.currentObjects = JSON.parse(JSON.stringify(bboxEditorState.originalObjects));
+    
+    // Exit edit mode
+    exitBboxEditMode();
+    
+    showNotification('Changes discarded', 'info');
 }
 
 // ============================================
@@ -1875,7 +2593,24 @@ async function loadLabels(seqId) {
     }
     
     try {
-        const response = await fetch(`/api/labels/${seqId}`);
+        let endpoint;
+        
+        // Browse mode: use full path from card
+        if (browseState.isActive) {
+            const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+            if (card && card.dataset.fullPath) {
+                // Remove leading slash for URL encoding
+                const imagePath = card.dataset.fullPath.replace(/^\//, '');
+                endpoint = `/api/browse/labels/${imagePath}`;
+            } else {
+                return null;
+            }
+        } else {
+            // Project mode
+            endpoint = `/api/labels/${seqId}`;
+        }
+        
+        const response = await fetch(endpoint);
         const data = await response.json();
         
         if (data.success) {
@@ -2587,6 +3322,61 @@ async function applyFlags() {
     const qualityFlags = Array.from(flagModalState.selectedQualityFlags);
     const perspectiveFlags = Array.from(flagModalState.selectedPerspectiveFlags);
     
+    // Browse mode: save to .dataset.json via different endpoint
+    if (browseState.isActive && browseState.activePath) {
+        try {
+            // Get image filename from card for each seqId
+            for (const seqId of seqIds) {
+                const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+                if (!card) continue;
+                
+                const filename = card.dataset.filename;
+                const imageId = filename.replace(/\.[^/.]+$/, ''); // Remove extension
+                
+                // Save quality flag
+                const qualityFlag = qualityFlags.length > 0 ? qualityFlags[0] : '';
+                await fetch('/api/browse/flag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: browseState.activePath,
+                        image_id: imageId,
+                        flag_name: 'quality_flag',
+                        flag_value: qualityFlag
+                    })
+                });
+                
+                // Save perspective flag
+                const perspectiveFlag = perspectiveFlags.length > 0 ? perspectiveFlags[0] : '';
+                await fetch('/api/browse/flag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: browseState.activePath,
+                        image_id: imageId,
+                        flag_name: 'perspective_flag',
+                        flag_value: perspectiveFlag
+                    })
+                });
+                
+                // Update UI
+                updateCardFlags(seqId, {
+                    quality_flags: qualityFlags,
+                    perspective_flags: perspectiveFlags
+                });
+            }
+            
+            showNotification(`Flags updated for ${seqIds.length} image(s)`, 'success');
+            closeFlagModal();
+            return;
+        } catch (error) {
+            console.error('Failed to apply flags (browse mode):', error);
+            showNotification('Failed to apply flags', 'error');
+            return;
+        }
+    }
+    
+    // Original project mode
     let endpoint, body;
     
     if (flagModalState.isBulk) {
@@ -2719,26 +3509,132 @@ function cycleQualityFlag() {
     }
 }
 
+// Set quality flag by number key (1-N)
+function setQualityFlagByNumber(number) {
+    const qualityFlags = getAvailableQualityFlags();
+    const flagIndex = number - 1;  // Convert 1-based to 0-based index
+    
+    if (flagIndex < 0 || flagIndex >= qualityFlags.length) {
+        showNotification(`No quality flag #${number} (only ${qualityFlags.length} available)`, 'warning');
+        return;
+    }
+    
+    const targetFlag = qualityFlags[flagIndex];
+    
+    // Get hovered card or selected images
+    const hoveredCard = document.querySelector('.image-card:hover');
+    let seqIds = [];
+    
+    if (hoveredCard) {
+        seqIds = [parseInt(hoveredCard.dataset.seqId)];
+    } else if (gridState.selectedImages.size > 0) {
+        seqIds = Array.from(gridState.selectedImages);
+    }
+    
+    if (seqIds.length === 0) {
+        return;
+    }
+    
+    // Apply to all target images
+    seqIds.forEach(seqId => {
+        applyQuickFlag(seqId, [targetFlag], null);
+    });
+    
+    const count = seqIds.length;
+    showNotification(`Set "${targetFlag}" on ${count} image${count > 1 ? 's' : ''}`, 'success');
+}
+
 // Quick apply flag (without modal)
 async function applyQuickFlag(seqId, qualityFlags, perspectiveFlags) {
     try {
-        const body = {};
-        if (qualityFlags !== null) body.quality_flags = qualityFlags;
-        if (perspectiveFlags !== null) body.perspective_flags = perspectiveFlags;
-        
-        const response = await fetch(`/api/image/${seqId}/flags`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            updateCardFlags(seqId, data.data);
+        // Check if browse mode is active
+        if (browseState.isActive && browseState.activePath) {
+            // Browse mode: use browse flag endpoint
+            const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+            if (!card) return;
+            
+            // Get image filename from card
+            const filename = card.dataset.filename;
+            const imageId = filename.replace(/\.[^/.]+$/, '');  // Remove extension
+            
+            // Apply quality flag
+            if (qualityFlags !== null && qualityFlags.length > 0) {
+                await fetch('/api/browse/flag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: browseState.activePath,
+                        image_id: imageId,
+                        flag_name: 'quality_flag',
+                        flag_value: qualityFlags[0]  // Take first flag
+                    })
+                });
+            }
+            
+            // Apply perspective flag
+            if (perspectiveFlags !== null && perspectiveFlags.length > 0) {
+                await fetch('/api/browse/flag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        directory: browseState.activePath,
+                        image_id: imageId,
+                        flag_name: 'perspective_flag',
+                        flag_value: perspectiveFlags[0]  // Take first flag
+                    })
+                });
+            }
+            
+            // Update card display
+            updateCardFlagsBrowse(seqId, qualityFlags, perspectiveFlags);
+        } else {
+            // Project mode: use project flags endpoint
+            const body = {};
+            if (qualityFlags !== null) body.quality_flags = qualityFlags;
+            if (perspectiveFlags !== null) body.perspective_flags = perspectiveFlags;
+            
+            const response = await fetch(`/api/image/${seqId}/flags`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                updateCardFlags(seqId, data.data);
+            }
         }
     } catch (error) {
         console.error('Quick flag failed:', error);
+    }
+}
+
+// Update card flags display for browse mode
+function updateCardFlagsBrowse(seqId, qualityFlags, perspectiveFlags) {
+    const card = document.querySelector(`.image-card[data-seq-id="${seqId}"]`);
+    if (!card) return;
+    
+    const flagsContainer = card.querySelector('.card-flags');
+    if (!flagsContainer) return;
+    
+    // Clear existing flags
+    flagsContainer.innerHTML = '';
+    
+    // Add quality flags
+    if (qualityFlags && qualityFlags.length > 0) {
+        qualityFlags.forEach(flag => {
+            const color = FLAG_CONFIG.quality.colors[flag] || '#3498db';
+            flagsContainer.innerHTML += `<span class="flag-pill flag-quality" style="background:${color}">${flag}</span>`;
+        });
+    }
+    
+    // Add perspective flags
+    if (perspectiveFlags && perspectiveFlags.length > 0) {
+        perspectiveFlags.forEach(flag => {
+            const color = FLAG_CONFIG.perspective.colors[flag] || '#27ae60';
+            flagsContainer.innerHTML += `<span class="flag-pill flag-perspective" style="background:${color}">${flag}</span>`;
+        });
     }
 }
 
@@ -3223,10 +4119,16 @@ async function toggleDirection(event, seqId, vehicleIdx) {
     indicator.classList.add('saving');
     
     try {
+        // Build request body - include directory in browse mode
+        const body = { direction: newDirection };
+        if (browseState.isActive && browseState.activePath) {
+            body.directory = browseState.activePath;
+        }
+        
         const response = await fetch(`/api/vehicle/${seqId}/${vehicleIdx}/direction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ direction: newDirection })
+            body: JSON.stringify(body)
         });
         
         const result = await response.json();
@@ -3364,17 +4266,12 @@ async function loadFilterOptionsForProject() {
 
 function toggleFilterPanel() {
     const panel = document.getElementById('filter-panel');
-    const mainContent = document.querySelector('.main-content');
     const toggleBtn = document.getElementById('filter-toggle-btn');
     
     if (!panel) return;
     
     filterState.isOpen = !filterState.isOpen;
     panel.classList.toggle('collapsed', !filterState.isOpen);
-    
-    if (mainContent) {
-        mainContent.classList.toggle('panel-collapsed', !filterState.isOpen);
-    }
     
     if (toggleBtn) {
         toggleBtn.classList.toggle('active', filterState.isOpen);
@@ -3687,5 +4584,684 @@ function debounce(func, wait) {
 async function refreshFilterOptions() {
     if (filterState.options) {
         await loadFilterOptions();
+    }
+}
+
+// ============================================
+// Directory Browsing (Phase 2.0)
+// ============================================
+
+/**
+ * Switch between sidebar tabs (Filters / Directories)
+ */
+function switchSidebarTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.sidebar-tab').forEach(tab => {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+    
+    // Update tab content
+    document.querySelectorAll('.sidebar-tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === `tab-${tabName}`);
+    });
+    
+    // Load directory tree if switching to directories tab for first time
+    if (tabName === 'directories') {
+        const tree = document.getElementById('directory-tree');
+        if (tree && !tree.hasChildNodes()) {
+            loadDirectoryTree();
+        }
+    }
+}
+
+/**
+ * Load directory tree from base path
+ */
+async function loadDirectoryTree() {
+    const container = document.getElementById('directory-tree');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="dir-loading">Loading...</div>';
+    
+    try {
+        // Pass expanded paths to backend so it returns deeper levels
+        const expandedPaths = Array.from(browseState.expandedNodes).join(',');
+        const response = await fetch(
+            `/api/browse/tree?path=${encodeURIComponent(browseState.basePath)}&depth=2&expanded=${encodeURIComponent(expandedPaths)}`
+        );
+        const result = await response.json();
+        
+        if (result.success) {
+            container.innerHTML = '';
+            renderDirectoryNode(result.data, container, 0);
+        } else {
+            container.innerHTML = `<div class="dir-loading">Error: ${result.error}</div>`;
+        }
+    } catch (error) {
+        console.error('Failed to load directory tree:', error);
+        container.innerHTML = '<div class="dir-loading">Failed to load</div>';
+    }
+}
+
+/**
+ * Render a directory node and its children
+ */
+function renderDirectoryNode(node, container, depth) {
+    // has_children from backend indicates if subdirs exist, children array may be empty until expanded
+    const hasChildren = node.has_children || (node.children && node.children.length > 0);
+    const isExpanded = browseState.expandedNodes.has(node.path) || depth < 1;
+    const isSelected = browseState.selectedPath === node.path;
+    
+    const div = document.createElement('div');
+    div.className = 'dir-node' + (isSelected ? ' selected' : '');
+    div.style.paddingLeft = `${12 + depth * 16}px`;
+    div.dataset.path = node.path;
+    
+    // Expand arrow
+    const arrow = document.createElement('span');
+    arrow.className = 'dir-expand';
+    arrow.textContent = hasChildren ? (isExpanded ? '▼' : '▶') : '';
+    arrow.onclick = (e) => {
+        e.stopPropagation();
+        if (hasChildren) {
+            toggleDirectoryNode(node.path);
+        }
+    };
+    div.appendChild(arrow);
+    
+    // Folder icon
+    const icon = document.createElement('span');
+    icon.className = 'dir-icon';
+    icon.textContent = isExpanded && hasChildren ? '📂' : '📁';
+    div.appendChild(icon);
+    
+    // Name
+    const name = document.createElement('span');
+    name.className = 'dir-name';
+    name.textContent = node.name;
+    div.appendChild(name);
+    
+    // Click to select
+    div.onclick = () => selectDirectoryNode(node.path);
+    
+    // Double click to expand and select
+    div.ondblclick = () => {
+        if (hasChildren) {
+            browseState.expandedNodes.add(node.path);
+        }
+        selectDirectoryNode(node.path);
+        activateDirectory();
+    };
+    
+    container.appendChild(div);
+    
+    // Render children if expanded
+    if (hasChildren && isExpanded) {
+        const childContainer = document.createElement('div');
+        childContainer.className = 'dir-children';
+        node.children.forEach(child => {
+            renderDirectoryNode(child, childContainer, depth + 1);
+        });
+        container.appendChild(childContainer);
+    }
+}
+
+/**
+ * Toggle expand/collapse of a directory node
+ */
+async function toggleDirectoryNode(path) {
+    if (browseState.expandedNodes.has(path)) {
+        browseState.expandedNodes.delete(path);
+    } else {
+        browseState.expandedNodes.add(path);
+        // Load children if needed
+        await loadDirectoryChildren(path);
+    }
+    // Re-render tree
+    loadDirectoryTree();
+}
+
+/**
+ * Load children of a directory (lazy loading)
+ * Now just triggers a tree reload - the expanded paths are sent to backend
+ */
+async function loadDirectoryChildren(path) {
+    // Children are now loaded via tree endpoint with expanded paths
+    // This function is kept for compatibility but doesn't need to do anything
+    // The tree reload in toggleDirectoryNode will include the expanded path
+}
+
+/**
+ * Select a directory node
+ */
+function selectDirectoryNode(path) {
+    browseState.selectedPath = path;
+    
+    // Update visual selection
+    document.querySelectorAll('.dir-node').forEach(node => {
+        node.classList.toggle('selected', node.dataset.path === path);
+    });
+    
+    // Enable activate button
+    const activateBtn = document.getElementById('btn-activate');
+    if (activateBtn) {
+        activateBtn.disabled = false;
+    }
+}
+
+/**
+ * Activate selected directory as dataset
+ */
+async function activateDirectory() {
+    const path = browseState.selectedPath;
+    if (!path) {
+        showNotification('Please select a directory first', 'warning');
+        return;
+    }
+    
+    try {
+        // Collect current app settings to save to dataset
+        const currentSettings = {
+            visible_labels: visibleLabels,
+            quality_flags: getAvailableQualityFlags(),
+            perspective_flags: getAvailablePerspectiveFlags(),
+            skip_delete_confirmation: projectData?.settings?.skip_delete_confirmation || false
+        };
+        
+        // Call activate endpoint with settings
+        const response = await fetch('/api/browse/activate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path, settings: currentSettings })
+        });
+        const result = await response.json();
+        
+        if (!result.success) {
+            showNotification(result.error || 'Failed to activate', 'error');
+            return;
+        }
+        
+        // Set as active
+        browseState.isActive = true;
+        browseState.activePath = path;
+        
+        // Load settings from dataset (if they exist)
+        if (result.data.settings) {
+            const ds = result.data.settings;
+            if (ds.visible_labels) visibleLabels = ds.visible_labels;
+            if (ds.quality_flags) {
+                // Store quality flags from dataset
+                if (!projectData) projectData = { settings: {} };
+                if (!projectData.settings) projectData.settings = {};
+                projectData.settings.quality_flags = ds.quality_flags;
+            }
+            if (ds.perspective_flags) {
+                if (!projectData) projectData = { settings: {} };
+                if (!projectData.settings) projectData.settings = {};
+                projectData.settings.perspective_flags = ds.perspective_flags;
+            }
+            browseState.metadata = ds;
+        }
+        
+        // Update UI
+        updateDirectoryInfo();
+        
+        // Clear project title (we're in directory mode now)
+        currentProject = null;
+        document.getElementById('project-title').textContent = '';
+        
+        // Load filter options for this directory
+        await loadBrowseFilterOptions();
+        
+        // Load images using existing function
+        loadImages();
+        
+        // Update metadata panel
+        updateMetadataPanel();
+        
+        showNotification(`Loaded ${result.data.image_count} images from directory`, 'success');
+        
+    } catch (error) {
+        console.error('Failed to activate directory:', error);
+        showNotification('Failed to activate directory', 'error');
+    }
+}
+
+/**
+ * Update directory info in header
+ */
+function updateDirectoryInfo() {
+    const infoDiv = document.getElementById('directory-info');
+    const pathSpan = document.getElementById('active-directory-path');
+    const projectTitle = document.getElementById('project-title');
+    
+    if (browseState.isActive && browseState.activePath) {
+        // Show directory info, hide project title
+        if (infoDiv) infoDiv.classList.remove('hidden');
+        if (projectTitle) projectTitle.style.display = 'none';
+        
+        // Show shortened path
+        if (pathSpan) {
+            const shortPath = browseState.activePath.split('/').slice(-2).join('/');
+            pathSpan.textContent = shortPath;
+            pathSpan.title = browseState.activePath;
+        }
+    } else {
+        // Hide directory info, show project title
+        if (infoDiv) infoDiv.classList.add('hidden');
+        if (projectTitle) projectTitle.style.display = '';
+    }
+}
+
+/**
+ * Change browse mode (direct/recursive)
+ */
+function changeBrowseMode(mode) {
+    browseState.displayMode = mode;
+    if (browseState.isActive) {
+        loadImages();
+        loadBrowseFilterOptions();
+    }
+}
+
+/**
+ * Load filter options for current browse directory
+ */
+async function loadBrowseFilterOptions() {
+    if (!browseState.activePath) return;
+    
+    try {
+        const response = await fetch(
+            `/api/browse/filter-options?directory=${encodeURIComponent(browseState.activePath)}&mode=${browseState.displayMode}`
+        );
+        const result = await response.json();
+        
+        if (result.success) {
+            filterState.options = result.data;
+            renderFilterSections();
+        }
+    } catch (error) {
+        console.error('Failed to load browse filter options:', error);
+    }
+}
+
+/**
+ * Refresh directory tree
+ */
+function refreshDirectoryTree() {
+    browseState.expandedNodes.clear();
+    loadDirectoryTree();
+}
+
+/**
+ * Go to parent directory
+ */
+function goToParentDirectory() {
+    if (!browseState.selectedPath) return;
+    
+    const parts = browseState.selectedPath.split('/');
+    if (parts.length > 1) {
+        parts.pop();
+        const parentPath = parts.join('/') || '/';
+        selectDirectoryNode(parentPath);
+        browseState.expandedNodes.add(parentPath);
+        loadDirectoryTree();
+    }
+}
+
+/**
+ * Initialize directory browsing on startup
+ */
+function initDirectoryBrowsing() {
+    // Load tree when directories tab is clicked
+    const dirTab = document.querySelector('.sidebar-tab[data-tab="directories"]');
+    if (dirTab) {
+        // Pre-load tree on startup
+        setTimeout(() => {
+            loadDirectoryTree();
+        }, 500);
+    }
+}
+
+// ============================================
+// METADATA PANEL FUNCTIONS
+// ============================================
+
+/**
+ * Toggle metadata panel collapse state
+ */
+function toggleMetadataPanel() {
+    const panel = document.getElementById('metadata-panel');
+    const icon = document.getElementById('meta-panel-toggle-icon');
+    
+    if (!panel) return;
+    
+    panel.classList.toggle('collapsed');
+    const isCollapsed = panel.classList.contains('collapsed');
+    icon.textContent = isCollapsed ? '◀' : '▶';
+    
+    // Save state to localStorage
+    localStorage.setItem('metadata_panel_collapsed', isCollapsed);
+}
+
+/**
+ * Initialize metadata panel state from localStorage
+ */
+function initMetadataPanel() {
+    const collapsed = localStorage.getItem('metadata_panel_collapsed');
+    const panel = document.getElementById('metadata-panel');
+    const icon = document.getElementById('meta-panel-toggle-icon');
+    
+    if (!panel) return;
+    
+    // Default to collapsed
+    if (collapsed === null || collapsed === 'true') {
+        panel.classList.add('collapsed');
+        if (icon) icon.textContent = '◀';
+    } else {
+        panel.classList.remove('collapsed');
+        if (icon) icon.textContent = '▶';
+    }
+}
+
+/**
+ * Toggle a section within the metadata panel
+ */
+function toggleMetadataSection(headerElement) {
+    const section = headerElement.closest('.panel-section');
+    if (section) {
+        section.classList.toggle('collapsed');
+    }
+}
+
+/**
+ * Render statistics for the active dataset
+ */
+function renderStatistics(stats) {
+    const container = document.getElementById('stats-content');
+    if (!container) return;
+    
+    if (!stats || Object.keys(stats).length === 0) {
+        container.innerHTML = '<div class="no-stats">No statistics available</div>';
+        return;
+    }
+    
+    let html = '';
+    
+    for (const [field, counts] of Object.entries(stats)) {
+        const total = Object.values(counts).reduce((a, b) => a + b, 0);
+        const maxCount = Math.max(...Object.values(counts));
+        
+        // Sort by count descending
+        const sortedEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+        
+        html += `
+            <div class="stats-field">
+                <div class="stats-field-name">${escapeHtml(field)}</div>
+                <div class="stats-items">
+        `;
+        
+        for (const [value, count] of sortedEntries) {
+            const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+            html += `
+                <div class="stats-item">
+                    <span class="stats-label" title="${escapeHtml(value)}">${escapeHtml(value)}</span>
+                    <div class="stats-bar-container">
+                        <div class="stats-bar" style="width: ${percentage}%"></div>
+                    </div>
+                    <span class="stats-count">${count}</span>
+                </div>
+            `;
+        }
+        
+        html += '</div></div>';
+    }
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Update metadata panel when dataset changes
+ */
+function updateMetadataPanel() {
+    if (!browseState.isActive) {
+        renderNoDatasetMessage();
+        return;
+    }
+    
+    // Load and display metadata
+    loadDatasetMetadata();
+}
+
+/**
+ * Show "no dataset" message in all sections
+ */
+function renderNoDatasetMessage() {
+    const statsContainer = document.getElementById('stats-content');
+    const propsContainer = document.getElementById('properties-content');
+    const configContainer = document.getElementById('config-content');
+    
+    const message = `
+        <div class="no-dataset-message">
+            <div class="message-icon">📁</div>
+            <p>Activate a dataset to view information</p>
+        </div>
+    `;
+    
+    if (statsContainer) statsContainer.innerHTML = message;
+    // Keep the form in properties but disable it
+    if (propsContainer) {
+        const form = propsContainer.querySelector('.metadata-form');
+        if (form) {
+            form.querySelectorAll('input, textarea, select').forEach(el => {
+                el.value = '';
+                el.disabled = true;
+            });
+            form.querySelectorAll('input[type="checkbox"]').forEach(el => {
+                el.checked = false;
+                el.disabled = true;
+            });
+        }
+    }
+}
+
+/**
+ * Load metadata for active dataset from backend
+ */
+async function loadDatasetMetadata() {
+    if (!browseState.isActive || !browseState.activePath) {
+        renderNoDatasetMessage();
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/dataset/metadata?path=${encodeURIComponent(browseState.activePath)}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            browseState.metadata = result.data;
+            populateMetadataForm(result.data);
+            
+            // Load stats if configured
+            if (result.data.stats_config?.fields) {
+                loadDatasetStats(result.data.stats_config.fields);
+            } else {
+                // Use default fields
+                loadDatasetStats(['label', 'color', 'model']);
+            }
+        } else {
+            console.error('Failed to load metadata:', result.error);
+        }
+    } catch (error) {
+        console.error('Failed to load metadata:', error);
+    }
+}
+
+/**
+ * Populate the metadata form with dataset values
+ */
+function populateMetadataForm(metadata) {
+    const form = document.getElementById('metadata-form');
+    if (!form) return;
+    
+    // Enable all fields
+    form.querySelectorAll('input, textarea, select').forEach(el => {
+        el.disabled = false;
+    });
+    form.querySelectorAll('input[type="checkbox"]').forEach(el => {
+        el.disabled = false;
+    });
+    
+    // Set name (read-only)
+    const nameInput = form.querySelector('input[name="name"]');
+    if (nameInput) {
+        nameInput.value = metadata.name || browseState.activePath.split('/').pop() || '';
+    }
+    
+    // Set text fields
+    const description = form.querySelector('textarea[name="description"]');
+    if (description) description.value = metadata.description || '';
+    
+    const notes = form.querySelector('textarea[name="notes"]');
+    if (notes) notes.value = metadata.notes || '';
+    
+    // Set select fields
+    const quality = form.querySelector('select[name="quality"]');
+    if (quality) quality.value = metadata.quality || '';
+    
+    const verdict = form.querySelector('select[name="verdict"]');
+    if (verdict) verdict.value = metadata.verdict || '';
+    
+    const cycle = form.querySelector('select[name="cycle"]');
+    if (cycle) cycle.value = metadata.cycle || '';
+    
+    // Set camera view checkboxes
+    const cameraViews = metadata.camera_view || [];
+    form.querySelectorAll('input[name="camera_view"]').forEach(checkbox => {
+        checkbox.checked = cameraViews.includes(checkbox.value);
+    });
+    
+    // Update stats config checkboxes
+    const statsFields = metadata.stats_config?.fields || ['label', 'color', 'model'];
+    document.querySelectorAll('input[name="stats_fields"]').forEach(checkbox => {
+        checkbox.checked = statsFields.includes(checkbox.value);
+    });
+}
+
+/**
+ * Save dataset metadata to backend
+ */
+async function saveDatasetMetadata() {
+    if (!browseState.isActive || !browseState.activePath) {
+        showNotification('No dataset active', 'warning');
+        return;
+    }
+    
+    const form = document.getElementById('metadata-form');
+    if (!form) return;
+    
+    // Collect form values
+    const updates = {
+        description: form.querySelector('textarea[name="description"]').value,
+        quality: form.querySelector('select[name="quality"]').value,
+        verdict: form.querySelector('select[name="verdict"]').value,
+        cycle: form.querySelector('select[name="cycle"]').value,
+        notes: form.querySelector('textarea[name="notes"]').value,
+        camera_view: Array.from(form.querySelectorAll('input[name="camera_view"]:checked')).map(cb => cb.value)
+    };
+    
+    try {
+        const response = await fetch('/api/dataset/metadata', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: browseState.activePath,
+                metadata: updates
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update local state
+            Object.assign(browseState.metadata || {}, updates);
+            showNotification('Metadata saved', 'success');
+        } else {
+            showNotification(result.error || 'Failed to save', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to save metadata:', error);
+        showNotification('Failed to save metadata', 'error');
+    }
+}
+
+/**
+ * Save stats configuration
+ */
+async function saveStatsConfig() {
+    if (!browseState.isActive || !browseState.activePath) {
+        showNotification('No dataset active', 'warning');
+        return;
+    }
+    
+    const checkboxes = document.querySelectorAll('input[name="stats_fields"]:checked');
+    const fields = Array.from(checkboxes).map(cb => cb.value);
+    
+    if (fields.length === 0) {
+        showNotification('Select at least one field', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/dataset/stats-config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                path: browseState.activePath,
+                fields: fields
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update local state
+            if (!browseState.metadata) browseState.metadata = {};
+            browseState.metadata.stats_config = { fields };
+            
+            // Reload stats with new fields
+            loadDatasetStats(fields);
+            
+            showNotification('Stats configuration updated', 'success');
+        } else {
+            showNotification(result.error || 'Failed to save', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to save stats config:', error);
+        showNotification('Failed to save configuration', 'error');
+    }
+}
+
+/**
+ * Load dataset statistics based on configured fields
+ */
+async function loadDatasetStats(fields) {
+    if (!browseState.isActive || !browseState.activePath) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/dataset/stats?path=${encodeURIComponent(browseState.activePath)}&fields=${encodeURIComponent(fields.join(','))}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            renderStatistics(result.data);
+        } else {
+            console.error('Failed to load stats:', result.error);
+            renderStatistics({});
+        }
+    } catch (error) {
+        console.error('Failed to load stats:', error);
+        renderStatistics({});
     }
 }
