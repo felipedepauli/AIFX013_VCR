@@ -1,0 +1,397 @@
+{
+  "version": "1.0",
+  "datasets": [
+    {
+      "name": "3mpx_v1",
+      "path": "/data/pdi_datasets/data/datasets/3mpx_v1",
+      "created_at": "2026-02-23T21:21:46.129452",
+      "last_accessed": "2026-02-25T20:30:52.185402",
+      "cycle": "type",
+      "image_count": 0
+    },
+    {
+      "name": "ausec_day",
+      "path": "/data/pdi_datasets/data/datasets/ausec_day",
+      "created_at": "2026-02-23T21:22:35.463912",
+      "last_accessed": "2026-02-25T20:30:48.848095",
+      "cycle": "type",
+      "image_count": 0
+    },
+    {
+      "name": "2024_top_0",
+      "path": "/data/pdi_datasets/data/datasets/freeflow_ccr",
+      "created_at": "2026-02-23T21:22:49.537801",
+      "last_accessed": "2026-02-25T13:34:48.033410",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "misc",
+      "path": "/data/pdi_datasets/data/datasets/misc",
+      "created_at": "2026-02-23T21:23:09.880688",
+      "last_accessed": "2026-02-25T20:29:17.013157",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "temp_0",
+      "path": "/data/pdi_datasets/data/datasets/prf",
+      "created_at": "2026-02-23T21:23:39.672159",
+      "last_accessed": "2026-02-23T21:23:39.672168",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "sat_csg",
+      "path": "/data/pdi_datasets/data/datasets/sat_csg",
+      "created_at": "2026-02-23T21:23:58.452400",
+      "last_accessed": "2026-02-25T20:27:27.042010",
+      "cycle": "brand_model",
+      "image_count": 0
+    },
+    {
+      "name": "day_v0",
+      "path": "/home/pauli/temp/AIFX013_VCR/images/xywh/day_v0",
+      "created_at": "2026-02-23T21:29:28.279373",
+      "last_accessed": "2026-02-24T12:24:51.554072",
+      "cycle": "first",
+      "image_count": 0
+    },
+    {
+      "name": "01",
+      "path": "/data/pdi_datasets/data/vehicle_od/virtual_loop/cet/veiculos_grandes/01",
+      "created_at": "2026-02-24T09:39:16.982775",
+      "last_accessed": "2026-02-27T18:36:17.572891",
+      "cycle": "Overview",
+      "image_count": 974
+    },
+    {
+      "name": "dataprom__0__less_representative",
+      "path": "/data/pdi_datasets/data/panoramic/extra/day/old_format/dataprom__0__less_representative",
+      "created_at": "2026-02-24T09:41:57.943812",
+      "last_accessed": "2026-02-24T09:41:57.943813",
+      "cycle": "Overview",
+      "image_count": 588
+    },
+    {
+      "name": "dataprom__0__train_valid",
+      "path": "/data/pdi_datasets/data/panoramic/extra/day/old_format/dataprom__0__train_valid",
+      "created_at": "2026-02-24T09:46:02.702627",
+      "last_accessed": "2026-02-24T09:46:02.702630",
+      "cycle": "Overview",
+      "image_count": 600
+    },
+    {
+      "name": "157_tarde1",
+      "path": "/data/pdi_datasets/data/db/virtual_loop/meng/157_tarde1",
+      "created_at": "2026-02-24T09:54:05.927609",
+      "last_accessed": "2026-02-24T09:54:05.927617",
+      "cycle": "Overview",
+      "image_count": 678
+    },
+    {
+      "name": "panoramic_day_extended",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/v_00/train",
+      "created_at": "2026-02-24T10:08:17.984840",
+      "last_accessed": "2026-02-24T10:08:17.984845",
+      "cycle": "Overview",
+      "image_count": 5219
+    },
+    {
+      "name": "itscampro_panoramic_june_2023_train_set",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/itscam600/panoramic/itscampro_panoramic_june_2023_train_set",
+      "created_at": "2026-02-24T10:09:15.346256",
+      "last_accessed": "2026-02-24T10:09:15.346260",
+      "cycle": "Overview",
+      "image_count": 9306
+    },
+    {
+      "name": "prf_back",
+      "path": "/data/pdi_datasets/data/datasets/prf/back",
+      "created_at": "2026-02-24T12:27:45.022031",
+      "last_accessed": "2026-02-25T20:28:18.902320",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "prf_front",
+      "path": "/data/pdi_datasets/data/datasets/prf/front",
+      "created_at": "2026-02-24T12:27:54.205355",
+      "last_accessed": "2026-02-25T20:27:55.279465",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "3mpx_v2",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/3mpx_v2_late_afternoon/old_format/train_valid",
+      "created_at": "2026-02-24T15:01:21.202705",
+      "last_accessed": "2026-02-24T15:01:21.202712",
+      "cycle": "Overview",
+      "image_count": 1522
+    },
+    {
+      "name": "train_valid_denoised",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/3mpx_v2_late_afternoon/old_format/train_valid_denoised",
+      "created_at": "2026-02-24T15:01:24.431179",
+      "last_accessed": "2026-02-24T15:01:38.663328",
+      "cycle": "Overview",
+      "image_count": 1522
+    },
+    {
+      "name": "test_notExtended",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/3mpx_v2_late_afternoon/old_format/test_notExtended",
+      "created_at": "2026-02-24T15:01:33.449567",
+      "last_accessed": "2026-02-24T15:01:33.449571",
+      "cycle": "Overview",
+      "image_count": 170
+    },
+    {
+      "name": "test_denoised",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_night/3mpx_v1/old_format/test_denoised",
+      "created_at": "2026-02-24T15:02:46.872397",
+      "last_accessed": "2026-02-24T15:02:46.872400",
+      "cycle": "Overview",
+      "image_count": 95
+    },
+    {
+      "name": "old_format",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/closeup/guaratuba-desembarque/general/old_format",
+      "created_at": "2026-02-24T15:03:12.063854",
+      "last_accessed": "2026-02-24T15:03:12.063856",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "Cycle1",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/panoramic_day/extended/SAT-CSG/old_format/Cycle1",
+      "created_at": "2026-02-24T15:03:48.154968",
+      "last_accessed": "2026-02-24T15:03:48.154970",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "v4",
+      "path": "/data/pdi_datasets/data/vehicle_attributes/bmc/v4",
+      "created_at": "2026-02-24T15:04:15.705044",
+      "last_accessed": "2026-02-24T15:04:15.705046",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "bmc_v4",
+      "path": "/data/pdi_datasets/data/datasets/bmc/v4",
+      "created_at": "2026-02-24T15:15:07.494448",
+      "last_accessed": "2026-02-24T15:15:42.724985",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "iluminaSP",
+      "path": "/data/pdi_datasets/data/vehicle_od/virtual_loop/iluminaSP",
+      "created_at": "2026-02-24T15:28:17.847305",
+      "last_accessed": "2026-02-24T15:28:17.847307",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "meng",
+      "path": "/data/pdi_datasets/data/vehicle_od/virtual_loop/meng",
+      "created_at": "2026-02-24T15:28:23.035508",
+      "last_accessed": "2026-02-24T15:28:23.035509",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "cet",
+      "path": "/data/pdi_datasets/data/vehicle_od/virtual_loop/cet",
+      "created_at": "2026-02-24T15:28:38.797967",
+      "last_accessed": "2026-02-24T15:28:38.797970",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "veiculos_grandes",
+      "path": "/data/pdi_datasets/data/vehicle_od/virtual_loop/cet/veiculos_grandes",
+      "created_at": "2026-02-24T15:28:42.985711",
+      "last_accessed": "2026-02-24T15:28:42.985714",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "itscampro_panoramic_june_2023_valid_set",
+      "path": "/data/pdi_datasets/data/vehicle_od/classifier/itscam600/panoramic/itscampro_panoramic_june_2023_valid_set",
+      "created_at": "2026-02-24T15:29:28.215191",
+      "last_accessed": "2026-02-24T15:29:28.215199",
+      "cycle": "Overview",
+      "image_count": 1377
+    },
+    {
+      "name": "panoramicDay",
+      "path": "/data/db/classifier/regressionSet/panoramicDay",
+      "created_at": "2026-02-24T17:02:30.328187",
+      "last_accessed": "2026-02-24T17:02:30.328190",
+      "cycle": "Overview",
+      "image_count": 312
+    },
+    {
+      "name": "test",
+      "path": "/data/pdi_datasets/data/vehicle_attributes/bmc/v2/revised_images/test",
+      "created_at": "2026-02-24T17:04:09.046821",
+      "last_accessed": "2026-02-24T17:04:09.046828",
+      "cycle": "Overview",
+      "image_count": 1300
+    },
+    {
+      "name": "revised_images",
+      "path": "/data/pdi_datasets/data/vehicle_attributes/bmc/v2/revised_images",
+      "created_at": "2026-02-24T17:04:47.956341",
+      "last_accessed": "2026-02-24T17:04:47.956343",
+      "cycle": "Overview",
+      "image_count": 0
+    },
+    {
+      "name": "viena_v4",
+      "path": "/data/pdi_datasets/data/datasets/viena_v4",
+      "created_at": "2026-02-24T17:07:44.614436",
+      "last_accessed": "2026-02-25T20:23:52.316804",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "multiway",
+      "path": "/data/pdi_datasets/data/datasets/multiway/data",
+      "created_at": "2026-02-25T10:35:03.488008",
+      "last_accessed": "2026-02-25T20:28:59.294131",
+      "cycle": "overview",
+      "image_count": 0
+    },
+    {
+      "name": "test-phase26-updated",
+      "path": "/tmp/phase26_test_4dx9bqta",
+      "created_at": "2026-02-25T11:31:57.707600",
+      "last_accessed": "2026-02-25T11:31:57.708436",
+      "cycle": "v2",
+      "image_count": 0
+    },
+    {
+      "name": "test-save-all-updated",
+      "path": "/tmp/save_all_test_cbiwpx5l",
+      "created_at": "2026-02-25T11:47:36.183921",
+      "last_accessed": "2026-02-25T11:47:36.185062",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "project_sept2025",
+      "path": "/data/pdi_datasets/data/datasets/project_sept2025",
+      "created_at": "2026-02-25T13:49:46.774885",
+      "last_accessed": "2026-02-25T20:26:34.171490",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "pan_june_23",
+      "path": "/data/pdi_datasets/data/datasets/pan_june_23",
+      "created_at": "2026-02-25T13:50:08.395002",
+      "last_accessed": "2026-02-25T20:25:09.794274",
+      "cycle": "color",
+      "image_count": 0
+    },
+    {
+      "name": "dataprom",
+      "path": "/data/pdi_datasets/data/datasets/dataprom",
+      "created_at": "2026-02-25T13:50:59.443034",
+      "last_accessed": "2026-02-25T20:24:57.604716",
+      "cycle": "type",
+      "image_count": 0
+    },
+    {
+      "name": "pan_2",
+      "path": "/data/pdi_datasets/data/db/classifier/regressionSet/panoramicDay",
+      "created_at": "2026-02-25T14:48:34.768278",
+      "last_accessed": "2026-02-25T14:51:17.954653",
+      "cycle": "",
+      "image_count": 312
+    },
+    {
+      "name": "panoramicNight",
+      "path": "/data/pdi_datasets/data/db/classifier/regressionSet/panoramicNight",
+      "created_at": "2026-02-25T14:49:17.821089",
+      "last_accessed": "2026-02-25T14:49:17.821094",
+      "cycle": "Overview",
+      "image_count": 197
+    },
+    {
+      "name": "quant",
+      "path": "/data/pdi_datasets/data/panoramic/extra/day/old_format/quant",
+      "created_at": "2026-02-25T14:49:31.576126",
+      "last_accessed": "2026-02-25T20:23:38.374934",
+      "cycle": "",
+      "image_count": 124
+    },
+    {
+      "name": "datasets",
+      "path": "/data/pdi_datasets/data/datasets",
+      "created_at": "2026-02-25T15:01:47.637262",
+      "last_accessed": "2026-02-26T09:57:34.522555",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "ieie",
+      "path": "/data/pdi_datasets/data/vehicle_attributes/bmc/v3/sample/test",
+      "created_at": "2026-02-25T18:59:10.127027",
+      "last_accessed": "2026-02-25T18:59:17.337255",
+      "cycle": "Overview",
+      "image_count": 599
+    },
+    {
+      "name": "sample",
+      "path": "/data/pdi_datasets/data/vehicle_attributes/bmc/v3/sample",
+      "created_at": "2026-02-25T20:13:19.204929",
+      "last_accessed": "2026-02-25T20:14:15.282013",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "freeflow_ccr",
+      "path": "/data/pdi_datasets/data/datasets/freeflow_ccr",
+      "created_at": "2026-02-25T20:30:06.653223",
+      "last_accessed": "2026-02-25T20:30:06.653227",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "bmc_v3",
+      "path": "/data/pdi_datasets/data/datasets/bmc/v3",
+      "created_at": "2026-02-26T12:00:53.913993",
+      "last_accessed": "2026-02-26T12:01:06.960674",
+      "cycle": "",
+      "image_count": 0
+    },
+    {
+      "name": "Indra",
+      "path": "/data/pdi_datasets/temp/data",
+      "created_at": "2026-02-26T21:38:38.855277",
+      "last_accessed": "2026-02-26T21:46:44.584488",
+      "cycle": "",
+      "image_count": 26356
+    },
+    {
+      "name": "less_frequency",
+      "path": "/data/pdi_datasets/temp/data/less_frequency",
+      "created_at": "2026-02-27T16:19:52.037758",
+      "last_accessed": "2026-02-27T16:19:52.037761",
+      "cycle": "Overview",
+      "image_count": 4725
+    },
+    {
+      "name": "final",
+      "path": "/data/pdi_datasets/data/datasets_/final",
+      "created_at": "2026-02-27T18:28:18.588172",
+      "last_accessed": "2026-02-27T18:28:18.588179",
+      "cycle": "Overview",
+      "image_count": 0
+    }
+  ]
+}

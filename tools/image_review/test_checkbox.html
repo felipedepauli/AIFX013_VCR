@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html><body>
+    <input type="checkbox" id="mycheck" onclick="test(event)">
+    <script>
+        function test(e) {
+            if (e.shiftKey) {
+                e.preventDefault();
+                document.getElementById('mycheck').checked = true;
+                console.log("Forced check to true");
+            }
+        }
+    </script>
+</body></html>

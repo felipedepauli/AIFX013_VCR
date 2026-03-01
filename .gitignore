@@ -1,0 +1,100 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.pyre/
+.tox/
+.nox/
+
+# Coverage reports
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Build and packaging
+build/
+dist/
+.eggs/
+*.egg
+*.egg-info/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+tools/image_review/.venv/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets.*
+
+# Notebook metadata
+.ipynb_checkpoints/
+
+# Editor and OS junk
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+scripts/*.log
+scripts/*.tmp
+
+# ML / experiment artifacts
+mlruns/
+runs/
+final_results/
+best_configs/
+benchmark_results.csv
+
+# Model and heavy binary artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.joblib
+*.pkl
+*.pickle
+*.db
+*.sqlite
+*.sqlite3
+
+# Project-specific generated data
+/images/
+/data/crops/
+/data/manifests/
+debug_viz/
+debug_viz_fix/
+revised_images/
+/projects/
+
+# image_review runtime artifacts
+tools/image_review/__pycache__/
+tools/image_review/static/cache/
+
+# Docs build
+docs/_build/

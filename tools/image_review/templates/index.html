@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Review Tool</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+
+<body>
+    <!-- Directory Browser Modal (for selecting directories) -->
+    <div id="browser-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeBrowser()"></div>
+        <div class="modal-content browser-modal">
+            <div class="browser-header">
+                <h3>📁 Select Directory</h3>
+                <button class="close-btn" onclick="closeBrowser()">✕</button>
+            </div>
+            <div class="browser-path">
+                <button onclick="goToParent()" id="parent-btn">⬆️ Parent</button>
+                <input type="text" id="current-path" readonly>
+            </div>
+            <div class="browser-info" id="browser-info"></div>
+            <div class="browser-list" id="browser-list">
+                <!-- Populated by JS -->
+            </div>
+            <div class="browser-actions">
+                <button onclick="closeBrowser()">Cancel</button>
+                <button class="primary" onclick="selectCurrentDirectory()" id="select-dir-btn">
+                    Select This Directory
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="main-app">
+        <!-- Header -->
+        <header>
+            <div class="header-left">
+                <h1>🖼️ Image Review Tool</h1>
+                <span class="project-name" id="project-title"></span>
+                <!-- Directory Mode Info (shown when browsing) -->
+                <div class="directory-info hidden" id="directory-info">
+                    <span class="directory-path" id="active-directory-path">No directory</span>
+                    <select class="mode-select" id="browse-mode" onchange="changeBrowseMode(this.value)">
+                        <option value="direct">Direct</option>
+                        <option value="recursive">Recursive</option>
+                    </select>
+                </div>
+            </div>
+            <div class="toolbar">
+                <div class="label-dropdown">
+                    <button class="dropdown-toggle" onclick="toggleLabelDropdown()">
+                        Labels: <span id="label-count">4 shown</span> ▼
+                    </button>
+                    <div class="dropdown-menu hidden" id="label-menu">
+                        <label>
+                            <input type="checkbox" name="vis-label" value="color" checked
+                                onchange="toggleLabel('color', this.checked)">
+                            color
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="brand" checked
+                                onchange="toggleLabel('brand', this.checked)">
+                            brand
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="model" checked
+                                onchange="toggleLabel('model', this.checked)">
+                            model
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="label"
+                                onchange="toggleLabel('label', this.checked)">
+                            label
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="type" checked
+                                onchange="toggleLabel('type', this.checked)">
+                            type
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="sub_type"
+                                onchange="toggleLabel('sub_type', this.checked)">
+                            sub_type
+                        </label>
+                        <label>
+                            <input type="checkbox" name="vis-label" value="lp_coords"
+                                onchange="toggleLabel('lp_coords', this.checked)">
+                            lp_coords
+                        </label>
+                        <div class="dropdown-actions">
+                            <button onclick="selectAllLabels()">Select All</button>
+                            <button onclick="clearAllLabels()">Clear All</button>
+                        </div>
+                        <div class="dropdown-divider"></div>
+                        <label class="bbox-toggle">
+                            <input type="checkbox" id="show-bbox" checked onchange="toggleBoundingBoxes(this.checked)">
+                            Show Bounding Boxes
+                        </label>
+                    </div>
+                </div>
+                <div class="grid-selector">
+                    <button data-size="4" onclick="setGridSize(4)">2×2</button>
+                    <button data-size="9" class="active" onclick="setGridSize(9)">3×3</button>
+                    <button data-size="25" onclick="setGridSize(25)">5×5</button>
+                    <button data-size="36" onclick="setGridSize(36)">6×6</button>
+                    <button data-size="35" onclick="setGridSize(35)">7×5</button>
+                    <button class="custom-grid-btn" id="custom-grid-btn" onclick="openCustomGridModal()"
+                        title="Custom Grid Size">⚙</button>
+                </div>
+                <div class="bulk-actions">
+                    <button class="bulk-action-btn" onclick="selectAllOnPage()"
+                        title="Select all images on this page (A)">
+                        ☑ Select Page
+                    </button>
+                    <button class="bulk-action-btn" onclick="deselectAllOnPage()"
+                        title="Deselect all images on this page (D)">
+                        ☐ Deselect Page
+                    </button>
+                </div>
+                <div class="direction-actions">
+                    <span class="direction-label">Direction:</span>
+                    <button class="direction-btn front" onclick="setAllDirection('front')"
+                        title="Set all vehicles to Front (coming toward camera)">
+                        ▼ Front
+                    </button>
+                    <button class="direction-btn back" onclick="setAllDirection('back')"
+                        title="Set all vehicles to Back (going away from camera)">
+                        ▲ Back
+                    </button>
+                </div>
+
+                <div class="toolbar-actions">
+                    <select id="theme-select" onchange="changeTheme(this.value)" class="theme-select"
+                        title="Select Theme">
+                        <option value="dark">🌙 Dark</option>
+                        <option value="light">☀️ Light</option>
+                    </select>
+                    <button class="help-btn" onclick="openShortcutsHelp()" title="Keyboard Shortcuts (?)"
+                        aria-label="Show keyboard shortcuts">?</button>
+                    <button class="settings-btn" onclick="openSettings()" title="Settings (,)"
+                        aria-label="Open settings">⚙️</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Active Filters Bar -->
+        <div class="active-filters-bar hidden" id="active-filters-bar">
+            <div class="active-filters-list" id="active-filters-list">
+                <!-- Filter chips injected here -->
+            </div>
+            <button class="btn-clear-all" onclick="clearAllFilters()" id="clear-all-btn">
+                Clear All
+            </button>
+            <span class="filter-summary" id="filter-summary"></span>
+        </div>
+
+        <!-- Content Wrapper (Sidebar + Grid + Metadata Panel) -->
+        <div class="content-wrapper">
+
+            <!-- Sidebar Panel (Filters + Directories) -->
+            <aside id="filter-panel" class="filter-panel">
+                <!-- Sidebar Tabs -->
+                <div class="sidebar-tabs">
+                    <button class="sidebar-tab active" data-tab="filters" onclick="switchSidebarTab('filters')">
+                        🔍 Filters
+                    </button>
+                    <button class="sidebar-tab" data-tab="datasets" onclick="switchSidebarTab('datasets')">
+                        📁 Datasets
+                    </button>
+                </div>
+
+                <!-- Tab Content: Filters -->
+                <div class="sidebar-tab-content active" id="tab-filters">
+                    <div class="filter-panel-header">
+                        <span class="filter-title">FILTERS</span>
+                        <div class="filter-header-actions">
+                            <span class="filter-count" id="filter-match-count">0 images</span>
+                            <button id="filter-hide-btn" class="btn-icon header-btn" onclick="toggleHideNonMatching()" title="Hide non-matching vehicles (H)">
+                                <span class="icon">👁️</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="filter-panel-content">
+                        <!-- Search Box -->
+                        <div class="filter-search">
+                            <input type="text" id="filter-search-input" placeholder="🔍 Search filters..."
+                                oninput="filterSearchOptions(this.value)" autocomplete="off">
+                        </div>
+
+                        <!-- Filter Sections Container -->
+                        <div class="filter-sections" id="filter-sections">
+                            <!-- Populated by JavaScript -->
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="filter-panel-footer">
+                            <button class="btn-clear-filters" onclick="clearAllFilters()" id="clear-filters-btn"
+                                disabled>
+                                Clear All Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Content: Datasets -->
+                <div class="sidebar-tab-content" id="tab-datasets">
+                    <!-- Section 1: Registered Datasets -->
+                    <div class="panel-section registered-datasets-section">
+                        <div class="section-header" onclick="toggleRegisteredSection()">
+                            <span class="section-toggle" id="registered-toggle">▼</span>
+                            <span>Registered (<span id="registered-count">0</span>)</span>
+                        </div>
+                        <div id="registered-datasets-list" class="section-body registered-datasets-list">
+                            <div class="empty-state" id="no-datasets-msg">
+                                No datasets registered yet.<br>
+                                Activate a dataset and click "+ Add Current".
+                            </div>
+                        </div>
+                        <div class="registered-datasets-actions">
+                            <button id="btn-add-current-dataset" class="btn btn-sm btn-primary"
+                                    onclick="addCurrentDataset()" disabled
+                                    title="Register the currently activated dataset">
+                                + Add Current
+                            </button>
+                            <button id="btn-open-dashboard" class="btn btn-sm btn-secondary"
+                                    onclick="openDashboardModal()"
+                                    title="Open Datasets Dashboard">
+                                📊 Dashboard
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Separator -->
+                    <hr class="panel-divider">
+
+                    <!-- Section 2: Browse Directories -->
+                    <div class="panel-section browse-directories-section">
+                        <div class="section-header" onclick="toggleBrowseSection()">
+                            <span class="section-toggle" id="browse-toggle">▼</span>
+                            <span>Browse Directories</span>
+                        </div>
+                        <div id="browse-directories-content" class="section-body">
+                            <div class="directory-header">
+                                <span class="directory-title">BROWSE</span>
+                            </div>
+
+                            <div class="directory-root-config">
+                                <input type="text" id="root-path-input" placeholder="Root path..." class="root-input">
+                                <button class="btn-icon" onclick="changeRootDirectory()" title="Set Root">
+                                    ➡️
+                                </button>
+                            </div>
+
+                            <div class="directory-toolbar">
+                                <button class="btn-icon" onclick="goToParentDirectory()" title="Parent Directory"
+                                    id="btn-parent-dir">
+                                    ⬆️
+                                </button>
+                                <button class="btn-icon" onclick="refreshDirectoryTree()" title="Refresh">
+                                    🔄
+                                </button>
+                            </div>
+
+                            <div class="directory-tree" id="directory-tree">
+                                <!-- Populated by JavaScript -->
+                            </div>
+
+                            <div class="directory-actions">
+                                <button class="btn-primary" id="btn-activate" onclick="activateDirectory()" disabled>
+                                    Activate Dataset
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Collapse Button (works for both tabs) -->
+                <button class="filter-collapse-btn" onclick="toggleFilterPanel()" title="Collapse Sidebar">
+                    <span class="toggle-icon" id="panel-toggle-icon">◀</span>
+                </button>
+            </aside>
+
+            <!-- Main Content Area -->
+            <div class="main-content" id="main-content">
+                <!-- Image Grid -->
+                <main id="image-grid" class="grid grid-3x3">
+                    <!-- Images populated by JavaScript -->
+                </main>
+            </div>
+
+            <!-- Metadata Panel (Right Sidebar) -->
+            <aside id="metadata-panel" class="metadata-panel collapsed">
+                <div class="metadata-panel-header">
+                    <button class="panel-collapse-btn" onclick="toggleMetadataPanel()" title="Expand/Collapse">
+                        <span class="toggle-icon" id="meta-panel-toggle-icon">◀</span>
+                    </button>
+                    <span class="panel-title">DATASET INFO</span>
+                    <span id="sync-indicator" class="sync-indicator" style="display:none;">
+                        <span class="sync-dot"></span>
+                        <span class="sync-text"></span>
+                    </span>
+                </div>
+
+                <div class="metadata-panel-content">
+                    <!-- Statistics Section -->
+                    <div class="panel-section stats-section">
+                        <div class="section-header" onclick="toggleMetadataSection(this)">
+                            <span class="section-icon">📊</span>
+                            <span class="section-title">Statistics</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="stats-content">
+                            <div class="no-dataset-message">
+                                <div class="message-icon">📁</div>
+                                <p>Activate a dataset to view statistics</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Properties Section -->
+                    <div class="panel-section properties-section">
+                        <div class="section-header" onclick="toggleMetadataSection(this)">
+                            <span class="section-icon">📋</span>
+                            <span class="section-title">Properties</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="properties-content">
+                            <form id="metadata-form" class="metadata-form">
+                                <!-- Name (editable, synced to registry) -->
+                                <div class="form-field">
+                                    <label>Name</label>
+                                    <input type="text" name="name" id="meta-name"
+                                        placeholder="Dataset name (must be unique)">
+                                </div>
+
+                                <!-- Description -->
+                                <div class="form-field">
+                                    <label>Description</label>
+                                    <textarea name="description" id="meta-description" rows="3"
+                                        placeholder="Enter dataset description..."></textarea>
+                                </div>
+
+                                <!-- Camera View (multi-select) -->
+                                <div class="form-field">
+                                    <label>Camera View</label>
+                                    <div class="checkbox-group" id="camera-view-options">
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="camera_view" value="frontal"> Frontal
+                                        </label>
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="camera_view" value="traseira"> Traseira
+                                        </label>
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="camera_view" value="panorâmica"> Panorâmica
+                                        </label>
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="camera_view" value="closeup"> Closeup
+                                        </label>
+                                        <label class="checkbox-option">
+                                            <input type="checkbox" name="camera_view" value="super-panorâmica">
+                                            Super-panorâmica
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Quality -->
+                                <div class="form-field">
+                                    <label>Quality</label>
+                                    <select name="quality" id="meta-quality">
+                                        <option value="">Select...</option>
+                                        <option value="poor">Poor</option>
+                                        <option value="fair">Fair</option>
+                                        <option value="good">Good</option>
+                                        <option value="excellent">Excellent</option>
+                                    </select>
+                                </div>
+
+                                <!-- Cycle -->
+                                <div class="form-field">
+                                    <label>Cycle</label>
+                                    <select name="cycle" id="meta-cycle">
+                                        <option value="">Select...</option>
+                                        <option value="overview">Overview</option>
+                                        <option value="bounding_box">Bounding Box</option>
+                                        <option value="type">Type</option>
+                                        <option value="color">Color</option>
+                                        <option value="brand_model">Brand and Model</option>
+                                    </select>
+                                </div>
+
+                                <!-- Notes -->
+                                <div class="form-field">
+                                    <label>Notes</label>
+                                    <textarea name="notes" id="meta-notes" rows="4"
+                                        placeholder="Additional notes..."></textarea>
+                                </div>
+
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Dataset Configuration Section -->
+                    <div class="panel-section config-section">
+                        <div class="section-header" onclick="toggleMetadataSection(this)">
+                            <span class="section-icon">⚙️</span>
+                            <span class="section-title">Dataset Config</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="config-content">
+                            <div class="dataset-config-form">
+                                <!-- Stats Fields -->
+                                <label class="config-group-label">Statistics Fields:</label>
+                                <div class="checkbox-group" id="stats-fields-options">
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="stats_fields" value="label" checked> label
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="stats_fields" value="color" checked> color
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="stats_fields" value="model" checked> model
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="stats_fields" value="quality_flag"> quality_flag
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="stats_fields" value="direction"> direction
+                                    </label>
+                                </div>
+
+                                <!-- Visible Labels -->
+                                <label class="config-group-label">Visible Labels:</label>
+                                <div class="checkbox-group" id="visible-labels-options">
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="color" checked> color
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="brand" checked> brand
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="model" checked> model
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="label"> label
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="type" checked> type
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="sub_type"> sub_type
+                                    </label>
+                                    <label class="checkbox-option">
+                                        <input type="checkbox" name="visible_labels" value="lp_coords"> lp_coords
+                                    </label>
+                                </div>
+
+                                <!-- Quality Flags -->
+                                <label class="config-group-label">Quality Flags:</label>
+                                <div id="quality-flags-list" class="quality-flags-list">
+                                    <!-- populated dynamically -->
+                                </div>
+                                <div class="add-flag-form">
+                                    <input type="text" id="new-quality-flag" placeholder="New flag name...">
+                                    <button class="add-btn" onclick="addQualityFlag()">+</button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trainable Models Section -->
+                    <div class="panel-section models-section">
+                        <div class="section-header" onclick="toggleMetadataSection(this)">
+                            <span class="section-icon">🤖</span>
+                            <span class="section-title">Trainable Models</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="models-content">
+                            <!-- Models list injected here -->
+                            <div id="trainable-models-list"></div>
+
+                            <!-- Add Model Form -->
+                            <div class="add-model-form">
+                                <input type="text" id="new-model-name" placeholder="New model name...">
+                                <button class="add-btn" onclick="addTrainableModel()">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dataset Attributes Section -->
+                    <div class="panel-section attributes-section">
+                        <div class="section-header" onclick="toggleMetadataSection(this)">
+                            <span class="section-icon">🏷️</span>
+                            <span class="section-title">Attributes</span>
+                            <span class="section-toggle">▼</span>
+                        </div>
+                        <div class="section-content" id="attributes-content">
+                            <!-- Attributes list injected here -->
+                            <div id="dataset-attributes-list"></div>
+
+                            <!-- Add Attribute Form -->
+                            <div class="add-attribute-form">
+                                <input type="text" id="new-attribute-name" placeholder="New attribute...">
+                                <button class="add-btn" onclick="addDatasetAttribute()">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Unified Save Button -->
+                    <div class="panel-save-all">
+                        <button type="button" class="save-all-btn" onclick="saveAllDatasetChanges()">
+                            💾 Save All Changes
+                        </button>
+                    </div>
+                </div>
+            </aside>
+
+        </div><!-- End content-wrapper -->
+
+        <!-- Footer -->
+        <footer>
+            <div class="pagination">
+                <button onclick="previousPage()" id="btn-prev" disabled>← Prev</button>
+                <span id="page-info">Page <input type="number" id="current-page" class="page-input" min="1" value="1">
+                    of <span id="total-pages">1</span></span>
+                <button onclick="nextPage()" id="btn-next" disabled>Next →</button>
+            </div>
+            <span class="separator">|</span>
+            <div class="stats">
+                <span>Total: <span id="total-images">0</span></span>
+                <span class="separator">|</span>
+                <span>Selected: <span id="selected-count">0</span></span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Notification Container -->
+    <div id="notifications" class="notifications-container"></div>
+
+    <!-- Full-size Image Modal -->
+    <div id="image-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeImageModal()"></div>
+        <div class="modal-content image-modal-content">
+            <button class="modal-close" onclick="closeImageModal()">✕</button>
+            <div class="modal-nav">
+                <button class="nav-btn" onclick="modalPrevImage()" id="modal-prev-btn">◀</button>
+                <button class="nav-btn" onclick="modalNextImage()" id="modal-next-btn">▶</button>
+            </div>
+            <div class="modal-main">
+                <div class="modal-image-container">
+                    <img id="modal-image" src="" alt="">
+                    <div id="modal-labels" class="label-overlay modal-label-overlay">
+                        <!-- Labels rendered here -->
+                    </div>
+                </div>
+                <div class="modal-edit-panel" id="modal-edit-panel">
+                    <div class="edit-panel-header">
+                        <h3>🏷️ Edit Labels</h3>
+                        <button class="edit-panel-toggle" onclick="toggleEditPanel()"
+                            title="Toggle Edit Panel">◀</button>
+                    </div>
+                    <div class="edit-panel-content" id="edit-panel-content">
+                        <div class="object-selector" id="object-selector">
+                            <!-- Object buttons rendered here -->
+                        </div>
+                        <div class="label-editors" id="label-editors">
+                            <!-- Label input fields rendered here -->
+                        </div>
+
+                        <!-- Bounding Box Editor Section -->
+                        <div class="bbox-editor-section" id="bbox-editor-section">
+                            <h4>📐 Bounding Boxes</h4>
+
+                            <!-- Add new object button - always visible -->
+                            <button class="btn-add-object" onclick="addNewObject()" id="btn-add-object">
+                                ➕ Add New Object
+                            </button>
+
+                            <!-- View mode -->
+                            <div id="bbox-view-mode">
+                                <button class="btn-edit-bbox" onclick="enterBboxEditMode()">
+                                    🖊️ Edit Bounding Boxes
+                                </button>
+                            </div>
+
+                            <!-- Edit mode (hidden by default) -->
+                            <div id="bbox-edit-mode" class="hidden">
+                                <div class="bbox-toolbar">
+                                    <button onclick="deleteBbox()" id="bbox-delete-btn" disabled
+                                        title="Delete Selected">
+                                        🗑️ Delete Selected
+                                    </button>
+                                </div>
+                                <p class="bbox-hint" id="bbox-hint">Click a box to select it</p>
+                                <div class="bbox-actions">
+                                    <button onclick="saveBboxChanges()" class="btn-save">
+                                        💾 Save
+                                    </button>
+                                    <button onclick="cancelBboxEdit()" class="btn-cancel">
+                                        ✕ Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-info">
+                <span id="modal-filename"></span>
+                <span id="modal-seq-id"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeDeleteModal()"></div>
+        <div class="modal-content delete-modal-content">
+            <h2>⚠️ <span id="delete-modal-title">Confirm Delete</span></h2>
+
+            <p id="delete-modal-message">Are you sure you want to delete this image?</p>
+
+            <div id="delete-file-list" class="file-list">
+                <!-- Files listed here -->
+            </div>
+
+            <p class="warning-text">⚠️ This action cannot be undone. Files will be permanently deleted.</p>
+
+            <label class="dont-ask-checkbox">
+                <input type="checkbox" id="delete-dont-ask" onchange="toggleSkipDeleteConfirmation(this.checked)">
+                Don't ask again for this session
+            </label>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeDeleteModal()">Cancel</button>
+                <button class="btn-delete" id="confirm-delete-btn" onclick="confirmDelete()">
+                    Delete
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flag Modal -->
+    <div id="flag-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeFlagModal()"></div>
+        <div class="modal-content flag-modal-content">
+            <h2>🏷️ <span id="flag-modal-title">Set Flags</span></h2>
+            <p id="flag-modal-subtitle" class="subtitle">Image: filename.jpg</p>
+
+            <!-- Quality Flags Section -->
+            <div class="flag-section">
+                <h3>Quality Flags</h3>
+
+                <!-- Bulk mode selector (hidden for single) -->
+                <div class="bulk-mode-selector hidden" id="quality-bulk-mode">
+                    <label><input type="radio" name="quality-mode" value="set" checked> Set</label>
+                    <label><input type="radio" name="quality-mode" value="add"> Add</label>
+                    <label><input type="radio" name="quality-mode" value="remove"> Remove</label>
+                </div>
+
+                <div class="flag-grid" id="quality-flags-grid">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+
+
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="closeFlagModal()">Cancel</button>
+                <button class="btn-apply" id="apply-flags-btn" onclick="applyFlags()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeSettings()"></div>
+        <div class="modal-content settings-modal-content">
+            <div class="modal-header">
+                <h2>⚙️ Settings</h2>
+                <button class="modal-close" onclick="closeSettings()">✕</button>
+            </div>
+
+            <!-- Project Info Section -->
+            <div class="settings-section">
+                <h3>Project Info</h3>
+                <div class="project-info">
+                    <div class="info-row">
+                        <span class="info-label">Name:</span>
+                        <span id="settings-project-name">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Directory:</span>
+                        <span id="settings-project-dir" class="dir-path">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Images:</span>
+                        <span id="settings-image-count">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Created:</span>
+                        <span id="settings-created-date">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- General Section -->
+            <div class="settings-section">
+                <h3>General</h3>
+                <label class="setting-checkbox">
+                    <input type="checkbox" id="setting-skip-confirm"
+                        onchange="updateSetting('skip_delete_confirmation', this.checked)">
+                    <span>Skip delete confirmation</span>
+                </label>
+
+                <div class="setting-group">
+                    <label class="setting-label">Default Grid Size:</label>
+                    <div class="radio-group">
+                        <label><input type="radio" name="setting-grid-size" value="4"
+                                onchange="updateSetting('grid_size', 4)"> 2×2</label>
+                        <label><input type="radio" name="setting-grid-size" value="9"
+                                onchange="updateSetting('grid_size', 9)"> 3×3</label>
+                        <label><input type="radio" name="setting-grid-size" value="25"
+                                onchange="updateSetting('grid_size', 25)"> 5×5</label>
+                        <label><input type="radio" name="setting-grid-size" value="36"
+                                onchange="updateSetting('grid_size', 36)"> 6×6</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visible Labels Section -->
+            <div class="settings-section">
+                <h3>Visible Labels</h3>
+                <div class="checkbox-grid" id="visible-labels-settings">
+                    <!-- Generated by JS -->
+                </div>
+            </div>
+
+            <!-- Quality Flags Section -->
+            <div class="settings-section">
+                <h3>Quality Flags</h3>
+                <div class="flag-manager">
+                    <div class="flag-tags" id="quality-flags-tags">
+                        <!-- Generated by JS -->
+                    </div>
+                    <div class="add-flag-row">
+                        <input type="text" id="new-quality-flag" placeholder="New flag name">
+                        <button onclick="addQualityFlag()">+ Add</button>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label class="setting-label">Default for new images:</label>
+                    <select id="default-quality-flag" onchange="onDefaultFlagChange('quality', this.value)">
+                        <option value="">None</option>
+                    </select>
+                </div>
+            </div>
+
+
+
+            <div class="modal-actions">
+                <button class="btn-primary" onclick="closeSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Shortcuts Help Modal -->
+    <div id="shortcuts-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeShortcutsHelp()"></div>
+        <div class="modal-content shortcuts-modal-content">
+            <h2>⌨️ Keyboard Shortcuts</h2>
+
+            <div class="shortcuts-section">
+                <h3>Navigation</h3>
+                <div class="shortcut-row"><kbd>W</kbd><span>Previous page</span></div>
+                <div class="shortcut-row"><kbd>E</kbd><span>Next page</span></div>
+                <div class="shortcut-row"><kbd>1-4</kbd><span>Grid size (when not hovering image)</span></div>
+                <div class="shortcut-row"><kbd>G</kbd><span>Custom grid size</span></div>
+            </div>
+
+            <div class="shortcuts-section">
+                <h3>Selection</h3>
+                <div class="shortcut-row"><kbd>A</kbd><span>Select all on page</span></div>
+                <div class="shortcut-row"><kbd>D</kbd><span>Deselect all</span></div>
+                <div class="shortcut-row"><kbd>Space</kbd><span>Open hovered image</span></div>
+            </div>
+
+            <div class="shortcuts-section">
+                <h3>Actions</h3>
+                <div class="shortcut-row"><kbd>R</kbd><span>Delete hovered/selected</span></div>
+                <div class="shortcut-row"><kbd>F</kbd><span>Flag selected/hovered</span></div>
+                <div class="shortcut-row"><kbd>1-9</kbd><span>Set quality flag (hover/selected)</span></div>
+                <div class="shortcut-row"><kbd>Q</kbd><span>Cycle quality flag</span></div>
+
+            </div>
+
+            <div class="shortcuts-section">
+                <h3>General</h3>
+                <div class="shortcut-row"><kbd>\</kbd><span>Toggle filter panel</span></div>
+                <div class="shortcut-row"><kbd>H</kbd><span>Hide filtered vehicles</span></div>
+                <div class="shortcut-row"><kbd>,</kbd><span>Open settings</span></div>
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Close modal / Deselect</span></div>
+            </div>
+
+            <button class="btn-primary" onclick="closeShortcutsHelp()">Got it</button>
+        </div>
+    </div>
+
+    <!-- Custom Grid Modal -->
+    <div id="custom-grid-modal" class="modal hidden">
+        <div class="modal-backdrop" onclick="closeCustomGridModal()"></div>
+        <div class="modal-content custom-grid-modal-content">
+            <h2>📷 Custom Grid Size</h2>
+            <p class="modal-description">Set a custom number of columns and rows for the image grid.</p>
+
+            <div class="custom-grid-inputs">
+                <div class="input-group">
+                    <label for="custom-cols">Columns</label>
+                    <input type="number" id="custom-cols" min="1" max="50" value="4"
+                        onkeydown="if(event.key==='Enter') applyCustomGrid()">
+                </div>
+                <span class="input-separator">×</span>
+                <div class="input-group">
+                    <label for="custom-rows">Rows</label>
+                    <input type="number" id="custom-rows" min="1" max="50" value="4"
+                        onkeydown="if(event.key==='Enter') applyCustomGrid()">
+                </div>
+            </div>
+
+            <div class="custom-grid-preview">
+                <span class="preview-label">Total images per page:</span>
+                <span class="preview-value" id="custom-grid-total">16</span>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-secondary" onclick="closeCustomGridModal()">Cancel</button>
+                <button class="btn-primary" onclick="applyCustomGrid()">Apply</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Datasets Dashboard Modal (Phase 25) -->
+    <div id="dashboard-modal" class="modal dashboard-modal" style="display: none;">
+        <div class="dashboard-modal-content">
+            <!-- Header -->
+            <div class="dashboard-header">
+                <div class="dashboard-header-left">
+                    <button id="dashboard-back-btn" class="btn btn-icon"
+                            onclick="dashboardGoBack()" style="display: none;"
+                            title="Back to list">
+                        ← Back
+                    </button>
+                    <h2 id="dashboard-title">📊 Datasets Dashboard</h2>
+                </div>
+                <button class="btn btn-icon modal-close-btn" onclick="closeDashboardModal()">✕</button>
+            </div>
+
+            <!-- Card Grid View -->
+            <div id="dashboard-card-grid" class="dashboard-card-grid">
+                <div id="dashboard-empty" class="dashboard-empty" style="display: none;">
+                    <p>No datasets registered yet.</p>
+                    <p>Activate a dataset and use <strong>[+ Add Current]</strong> in the left panel.</p>
+                </div>
+            </div>
+
+            <!-- Detail View -->
+            <div id="dashboard-detail" class="dashboard-detail" style="display: none;">
+                <!-- Thumbnail Strip -->
+                <div class="detail-thumbnails">
+                    <img id="detail-thumb-0" class="detail-thumb" src="" alt="Thumbnail 1">
+                    <img id="detail-thumb-1" class="detail-thumb" src="" alt="Thumbnail 2">
+                    <img id="detail-thumb-2" class="detail-thumb" src="" alt="Thumbnail 3">
+                    <img id="detail-thumb-3" class="detail-thumb" src="" alt="Thumbnail 4">
+                </div>
+
+                <!-- Two-column layout -->
+                <div class="detail-columns">
+                    <!-- Left: Metadata (editable) -->
+                    <div class="detail-metadata">
+                        <h3>Metadata</h3>
+
+                        <div class="detail-field">
+                            <label>Name</label>
+                            <input type="text" id="detail-name" onchange="saveDashboardField('name', this.value)">
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Path</label>
+                            <span id="detail-path" class="detail-readonly"></span>
+                            <span id="detail-path-warning" class="path-warning" style="display:none;">⚠️ Path not found</span>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Description</label>
+                            <textarea id="detail-description" rows="3"
+                                      onchange="saveDashboardField('metadata.description', this.value)"></textarea>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Camera View</label>
+                            <select id="detail-camera-view" multiple
+                                    onchange="saveDashboardField('metadata.camera_view', getMultiSelectValues(this))">
+                                <option value="frontal">Frontal</option>
+                                <option value="traseira">Traseira</option>
+                                <option value="panorâmica">Panorâmica</option>
+                                <option value="closeup">Closeup</option>
+                                <option value="super-panorâmica">Super-panorâmica</option>
+                            </select>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Quality</label>
+                            <select id="detail-quality"
+                                    onchange="saveDashboardField('metadata.quality', this.value)">
+                                <option value="">—</option>
+                                <option value="poor">Poor</option>
+                                <option value="fair">Fair</option>
+                                <option value="good">Good</option>
+                                <option value="excellent">Excellent</option>
+                            </select>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Cycle</label>
+                            <select id="detail-cycle"
+                                    onchange="saveDashboardField('metadata.cycle', this.value)">
+                                <option value="">—</option>
+                                <option value="first">First</option>
+                                <option value="second">Second</option>
+                                <option value="third">Third</option>
+                                <option value="fourth">Fourth</option>
+                                <option value="fifth">Fifth</option>
+                            </select>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Notes</label>
+                            <textarea id="detail-notes" rows="3"
+                                      onchange="saveDashboardField('metadata.notes', this.value)"></textarea>
+                        </div>
+
+                        <!-- Trainable Models (read-only summary) -->
+                        <div class="detail-field">
+                            <label>Trainable Models</label>
+                            <div id="detail-trainable-models" class="detail-tag-list">
+                                <span class="detail-muted">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Config summary -->
+                        <div class="detail-field">
+                            <label>Visible Labels</label>
+                            <div id="detail-visible-labels" class="detail-tag-list">
+                                <span class="detail-muted">—</span>
+                            </div>
+                        </div>
+
+                        <div class="detail-field">
+                            <label>Quality Flags</label>
+                            <div id="detail-quality-flags" class="detail-tag-list">
+                                <span class="detail-muted">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div class="detail-actions">
+                            <button class="btn btn-primary" id="btn-open-from-dashboard" onclick="openDatasetFromDashboard()">
+                                Open Dataset
+                            </button>
+                            <button class="btn btn-danger" onclick="removeDatasetFromDashboard()">
+                                🗑️ Remove from Dashboard
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Statistics -->
+                    <div class="detail-statistics">
+                        <h3>Statistics</h3>
+
+                        <div class="stat-group">
+                            <div class="stat-row stat-total">
+                                <span class="stat-label">Total images</span>
+                                <span id="stat-total-images" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row stat-total">
+                                <span class="stat-label">Total vehicles</span>
+                                <span id="stat-total-vehicles" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Veh/Img μ</span>
+                                <span id="stat-vpi-mean" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Veh/Img σ²</span>
+                                <span id="stat-vpi-var" class="stat-value">—</span>
+                            </div>
+                        </div>
+
+                        <div class="stat-group">
+                            <h4>Classes</h4>
+                            <table class="detail-stat-table">
+                                <thead><tr><th>Class</th><th>Count</th><th>Area μ</th><th>Area σ²</th></tr></thead>
+                                <tbody id="stat-class-table-body">
+                                    <tr><td>car</td><td>—</td><td>—</td><td>—</td></tr>
+                                    <tr><td>motorcycle</td><td>—</td><td>—</td><td>—</td></tr>
+                                    <tr><td>truck</td><td>—</td><td>—</td><td>—</td></tr>
+                                    <tr><td>bus</td><td>—</td><td>—</td><td>—</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="stat-group">
+                            <h4>Spatial (normalized)</h4>
+                            <div class="stat-row">
+                                <span class="stat-label">Centroid μ</span>
+                                <span id="stat-pos-mean" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Centroid σ²</span>
+                                <span id="stat-pos-var" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Area μ</span>
+                                <span id="stat-area-mean" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row">
+                                <span class="stat-label">Area σ²</span>
+                                <span id="stat-area-var" class="stat-value">—</span>
+                            </div>
+                            <div class="stat-row stat-computed">
+                                <span class="stat-label">Computed</span>
+                                <span id="stat-computed-at" class="stat-value">—</span>
+                            </div>
+                        </div>
+
+                        <button class="btn btn-sm btn-secondary" onclick="refreshDatasetStats()">
+                            🔄 Refresh Statistics
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading...</div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+
+</html>

@@ -1,0 +1,318 @@
+#!/usr/bin/env python3
+"""05_optimize.py - Hyperparameter optimization with Optuna + MLFlow.
+
+Usage:
+    python 05_optimize.py --hp-config hyperparameters.yaml
+    python 05_optimize.py --hp-config custom_search.yaml --n-trials 100
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+from typing import Any
+
+from src.optimization.optuna_runner import run_optimization
+from src.utils.config import load_config
+from src.core.interfaces import PipelineStep
+
+# Import training function
+sys.path.insert(0, str(Path(__file__).parent))
+from importlib.util import spec_from_file_location, module_from_spec
+
+spec = spec_from_file_location("train_module", Path(__file__).parent / "06_train.py")
+train_module = module_from_spec(spec)
+spec.loader.exec_module(train_module)
+train_fn = train_module.train
+
+def train_wrapper(**kwargs: Any) -> dict[str, Any]:
+    """Adapter to convert flat Optuna params into config dict for train()."""
+    manifest_path = kwargs.pop("manifest_path")
+    base_output_dir = kwargs.pop("output_dir")
+    trial = kwargs.pop("trial", None)
+    
+    # Ensure each trial has a unique output directory to prevent
+    # checkpoint collisions (e.g. trying to resume a resnet run with efficientnet)
+    if trial is not None:
+        output_dir = base_output_dir / f"trial_{trial.number}"
+    else:
+        output_dir = base_output_dir
+    
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get loss function name to conditionally add loss-specific params
+    loss_fn = kwargs.get("loss_fn", "smooth_modulation")
+    
+    # Build loss configuration based on loss function
+    loss_config = {"name": loss_fn}
+    
+    if loss_fn == "smooth_modulation":
+        loss_config["tau"] = kwargs.get("tau", 0.5)
+        loss_config["modulation_type"] = kwargs.get("modulation_type", "cosine")
+    elif loss_fn == "focal":
+        loss_config["gamma"] = kwargs.get("focal_gamma", 2.0)
+        loss_config["alpha"] = kwargs.get("focal_alpha", 0.25)
+    
+    # Whatever remains is treated as hyperparameters for the config
+    # We construct a synthetic config dict
+    config = {
+        "model": {
+            "backbone": kwargs.get("backbone", "colornet_v1"),
+            "fusion": kwargs.get("fusion", "msff"),
+            "dropout": kwargs.get("dropout", 0.2),
+        },
+        "training": {
+            # Strategy params
+            "strategy": kwargs.get("strategy", "vcr"),
+            
+            # Training params
+            "epochs": kwargs.get("epochs", 200),
+            "batch_size": kwargs.get("batch_size", 32),
+            "input_size": kwargs.get("image_size", 224),
+            "lr": kwargs.get("lr", 1e-4),
+            "weight_decay": kwargs.get("weight_decay", 1e-4),
+            "device": kwargs.get("device", "auto"),
+            "use_weighted_sampler": kwargs.get("use_weighted_sampler", True),
+        },
+        "loss": loss_config,
+    }
+    
+    return train_fn(
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        config=config,
+        device=kwargs.get("device", "auto"),
+        experiment_name=kwargs.get("experiment_name", "VCR-Optimization"),
+        trial=trial,
+    )
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+class Step05Optimize(PipelineStep):
+    """Pipeline step for hyperparameter optimization with Optuna.
+
+    This step:
+    1. Loads hyperparameter search space from config
+    2. Runs Optuna optimization with train_wrapper
+    3. Logs trials to MLflow
+    4. Saves best hyperparameters and study
+    """
+
+    @property
+    def name(self) -> str:
+        return "05_optimize"
+
+    @property
+    def description(self) -> str:
+        return "Hyperparameter optimization with Optuna + MLflow."
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        super().__init__(config)
+        self.hp_config_path: Path = Path("hyperparameters.yaml")
+        self.manifest_path: Path = Path("data/manifests/manifest_ready.jsonl")
+        self.output_dir: Path = Path("runs/optimization")
+        self.n_trials: int | None = None
+        self.experiment_name: str = "VCR-Optimization"
+
+    def validate(self) -> bool:
+        """Validate that hp_config and manifest exist."""
+        if not self.hp_config_path.exists():
+            logger.error(f"Hyperparameter config not found: {self.hp_config_path}")
+            return False
+        if not self.manifest_path.exists():
+            logger.error(f"Manifest not found: {self.manifest_path}")
+            return False
+        return True
+
+    def run(self) -> int:
+        """Execute optimization.
+
+        Returns:
+            0 on success, 1 on failure.
+        """
+        if not self.validate():
+            return 1
+
+        logger.info(f"Loading hyperparameter config from {self.hp_config_path}")
+        hp_cfg = load_config(str(self.hp_config_path))
+
+        study_config = hp_cfg.get("study", {})
+        if self.n_trials:
+            study_config["n_trials"] = self.n_trials
+
+        hp_config = hp_cfg.get("hyperparameters", {})
+        fixed_params = hp_cfg.get("fixed", {})
+
+        fixed_params["manifest_path"] = self.manifest_path
+        fixed_params["output_dir"] = self.output_dir
+
+        logger.info(f"Starting optimization with {study_config.get('n_trials', 50)} trials")
+        logger.info(f"Hyperparameters to optimize: {list(hp_config.keys())}")
+
+        # Use SQLite storage for persistence (allows resuming)
+        storage_path = self.output_dir.parent / "experiments.db"
+        self.output_dir.parent.mkdir(parents=True, exist_ok=True)
+        storage_url = f"sqlite:///{storage_path}"
+        logger.info(f"Using Optuna storage: {storage_url}")
+
+        study = run_optimization(
+            train_fn=train_wrapper,
+            hp_config=hp_config,
+            fixed_params=fixed_params,
+            study_config=study_config,
+            experiment_name=self.experiment_name,
+            storage=storage_url,
+        )
+
+        # Save study
+        import joblib
+        study_path = self.output_dir / "study.pkl"
+        study_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(study, str(study_path))
+
+        print(f"\n{'='*60}")
+        print("OPTIMIZATION COMPLETE")
+        print(f"{'='*60}")
+        print(f"Best trial: {study.best_trial.number}")
+        print(f"Best value: {study.best_trial.value:.4f}")
+        print(f"\nBest hyperparameters:")
+        for k, v in study.best_trial.params.items():
+            print(f"  {k}: {v}")
+        print(f"\nStudy saved to: {study_path}")
+
+        # Analyze and save best configs per backbone
+        self._analyze_and_save_best_configs(study, storage_path)
+
+        logger.info("Step05Optimize completed successfully.")
+        return 0
+
+    def _analyze_and_save_best_configs(self, study: Any, storage_path: Path) -> None:
+        """Analyze study results and save best configuration per backbone.
+        
+        Args:
+            study: Optuna study object
+            storage_path: Path to the SQLite database
+        """
+        from collections import defaultdict
+        import yaml
+        
+        logger.info("Analyzing study results by backbone...")
+        
+        # Group trials by backbone
+        backbone_trials = defaultdict(list)
+        for trial in study.trials:
+            if trial.state.name == 'COMPLETE' and 'backbone' in trial.params:
+                backbone = trial.params['backbone']
+                backbone_trials[backbone].append(trial)
+        
+        if not backbone_trials:
+            logger.warning("No completed trials with backbone parameter found")
+            return
+        
+        # Find best trial per backbone
+        print(f"\n{'='*80}")
+        print("BEST HYPERPARAMETERS PER BACKBONE")
+        print(f"{'='*80}")
+        
+        configs_dir = self.output_dir.parent / "best_configs"
+        configs_dir.mkdir(exist_ok=True)
+        
+        for backbone, trials in sorted(backbone_trials.items()):
+            best_trial = max(trials, key=lambda t: t.value)
+            
+            print(f"\n{backbone.upper()}:")
+            print(f"  Trials tested: {len(trials)}")
+            print(f"  Best trial: #{best_trial.number}")
+            print(f"  Best score: {best_trial.value:.4f}")
+            print(f"  Best hyperparameters:")
+            for key, value in best_trial.params.items():
+                if key != 'backbone':
+                    print(f"    {key}: {value}")
+            
+            # Create config file
+            config = {
+                "training": {
+                    "backbone": backbone,
+                    "strategy": best_trial.params.get("strategy", "vcr"),
+                    "fusion": best_trial.params.get("fusion", "msff"),
+                    "loss": best_trial.params.get("loss_fn", "smooth_modulation"),
+                    "epochs": best_trial.params.get("epochs", 20),
+                    "batch_size": best_trial.params.get("batch_size", 32),
+                    "image_size": best_trial.params.get("image_size", 224),
+                    "lr": best_trial.params.get("lr", 1e-4),
+                    "weight_decay": best_trial.params.get("weight_decay", 1e-4),
+                    "device": best_trial.params.get("device", "auto"),
+                    "use_weighted_sampler": best_trial.params.get("use_weighted_sampler", True),
+                },
+                "metadata": {
+                    "trial_number": best_trial.number,
+                    "best_score": best_trial.value,
+                    "optimization_date": str(best_trial.datetime_complete),
+                }
+            }
+            
+            config_path = configs_dir / f"{backbone}_best.yaml"
+            with open(config_path, 'w') as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+            
+            logger.info(f"Saved best config for {backbone}: {config_path}")
+        
+        print(f"\n{'='*80}")
+        print(f"✓ All best configs saved to: {configs_dir}")
+        print(f"{'='*80}\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Optuna hyperparameter optimization")
+    parser.add_argument("--experiment", type=str, help="Experiment name (auto-resolves manifest)")
+    parser.add_argument("--hp-config", type=str, default="hyperparameters.yaml",
+                        help="Hyperparameter configuration file")
+    parser.add_argument("--manifest", type=str, help="Override manifest path")
+    parser.add_argument("--output-dir", type=str, help="Override output directory")
+    parser.add_argument("--n-trials", type=int, default=None,
+                        help="Override number of trials")
+    parser.add_argument("--config", type=str, default="config.yaml", help="Global config path")
+
+    args = parser.parse_args()
+
+    cfg = load_config(args.config)
+    runs_dir = Path(cfg.get("paths", {}).get("runs_dir", "runs"))
+
+    step = Step05Optimize(config=cfg)
+    step.hp_config_path = Path(args.hp_config)
+    step.n_trials = args.n_trials
+
+    # Resolve paths from experiment or use defaults
+    if args.experiment:
+        exp_name = args.experiment
+        if "/" not in exp_name:
+            exp_dir = runs_dir / exp_name
+        else:
+            exp_dir = Path(exp_name)
+        
+        step.experiment_name = exp_name
+        step.output_dir = args.output_dir and Path(args.output_dir) or exp_dir / "optimization"
+        
+        # Manifest resolution
+        if args.manifest:
+            step.manifest_path = Path(args.manifest)
+        else:
+            step.manifest_path = exp_dir / "data" / "manifest.jsonl"
+            if not step.manifest_path.exists():
+                step.manifest_path = Path("data/manifests/manifest_ready.jsonl")
+    else:
+        step.experiment_name = "VCR-Optimization"
+        step.output_dir = Path(args.output_dir or "runs/optimization")
+        step.manifest_path = Path(args.manifest or "data/manifests/manifest_ready.jsonl")
+
+    return step.run()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
