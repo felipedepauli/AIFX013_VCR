@@ -3408,7 +3408,70 @@ def serve_dataset_thumbnail(dataset_id, index):
     return send_file(thumb_path, mimetype='image/jpeg')
 
 
+def ensure_mongodb(container_name='mongodb', max_wait=15):
+    """Check if MongoDB Docker container is running; start it if stopped."""
+    import subprocess
+    import time
+
+    try:
+        # Check container status
+        result = subprocess.run(
+            ['docker', 'inspect', '-f', '{{.State.Status}}', container_name],
+            capture_output=True, text=True, timeout=5
+        )
+
+        if result.returncode != 0:
+            print(f"[MongoDB] Docker container '{container_name}' not found. Skipping auto-start.")
+            return False
+
+        status = result.stdout.strip()
+
+        if status == 'running':
+            print(f"[MongoDB] Docker container '{container_name}' is already running.")
+            return True
+
+        if status in ('exited', 'created', 'paused'):
+            print(f"[MongoDB] Container '{container_name}' is {status}. Starting...")
+            start = subprocess.run(
+                ['docker', 'start', container_name],
+                capture_output=True, text=True, timeout=10
+            )
+            if start.returncode != 0:
+                print(f"[MongoDB] Failed to start container: {start.stderr.strip()}")
+                return False
+
+            # Wait until mongod is accepting connections
+            for i in range(max_wait):
+                check = subprocess.run(
+                    ['docker', 'exec', container_name, 'mongosh', '--quiet', '--eval', 'db.runCommand({ping:1}).ok'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if check.returncode == 0 and '1' in check.stdout:
+                    print(f"[MongoDB] Container '{container_name}' started and ready ({i+1}s).")
+                    return True
+                time.sleep(1)
+
+            print(f"[MongoDB] Container started but not ready after {max_wait}s.")
+            return False
+
+        print(f"[MongoDB] Container '{container_name}' is in unexpected state: {status}")
+        return False
+
+    except FileNotFoundError:
+        print("[MongoDB] Docker not found on PATH. Skipping auto-start.")
+        return False
+    except subprocess.TimeoutExpired:
+        print("[MongoDB] Docker command timed out. Skipping auto-start.")
+        return False
+    except Exception as e:
+        print(f"[MongoDB] Auto-start error: {e}")
+        return False
+
+
 if __name__ == '__main__':
+    # Ensure MongoDB container is running before connecting
+    ensure_mongodb()
+
     # Initialize MongoDB connection
     init_mongodb()
 
@@ -3420,4 +3483,4 @@ if __name__ == '__main__':
     print(f"MongoDB: {'✅ Connected' if mongo_available else '❌ Not available'}")
     print("Starting server at http://localhost:5000")
     print("=" * 50)
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5001)
